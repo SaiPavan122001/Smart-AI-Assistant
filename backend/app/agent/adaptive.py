@@ -53,6 +53,16 @@ class AdaptiveOutcome:
     results: list[ToolResult] = field(default_factory=list)
 
 
+def _loop_outcome(
+    ctx: ExecutionContext, iterations: int, artifacts: dict[str, Any], results: list[ToolResult]
+) -> AdaptiveOutcome:
+    msg = ctx.loop_guard.tripped or "loop detected"
+    return AdaptiveOutcome(
+        success=False, summary=msg[:400], iterations=iterations, artifacts=artifacts, results=results,
+        error=ErrorInfo(code=ErrorCode.LOOP_DETECTED, message=msg),
+    )  # fmt: skip
+
+
 class AdaptiveRunner:
     def __init__(self, gateway: LLMGateway, router: ToolRouter, registry: ToolRegistry) -> None:
         self._gateway = gateway
@@ -70,6 +80,8 @@ class AdaptiveRunner:
         results: list[ToolResult] = []
         for i in range(1, max_iterations + 1):
             ctx.token.raise_if_cancelled()
+            if ctx.loop_guard.tripped:
+                return _loop_outcome(ctx, i - 1, artifacts, results)
             await ctx.pause.wait_if_paused(ctx.token)
             req = LLMRequest(
                 system=ADAPTIVE_SYSTEM, messages=_compress(messages), tools=tools, tool_choice="any",
@@ -93,6 +105,8 @@ class AdaptiveRunner:
                     return self._finish(tu, i, artifacts, results)
                 result = await self._call(tu, ctx, rationale or goal, seen)
                 results.append(result)
+                if ctx.loop_guard.tripped:  # stop the batch: no further tool call may run
+                    return _loop_outcome(ctx, i, artifacts, results)
                 artifacts.update(
                     {
                         k: v
@@ -121,6 +135,13 @@ class AdaptiveRunner:
         spec = self._registry.get(tu.name)
         repeat_limit = 3 if (spec and spec.read_only) else 2
         if seen[key] > repeat_limit:  # loop breaker: identical call repeated
+            seen["__breaks__"] = seen.get("__breaks__", 0) + 1
+            if (
+                seen["__breaks__"] >= 3
+            ):  # the model ignores the refusal: this is a loop, not a hiccup
+                ctx.loop_guard.trip(
+                    f"The model repeated '{tu.name}' with identical arguments despite being told to stop."
+                )
             return ToolResult(
                 tool_call_id=call.id, tool=tu.name, ok=False,
                 error=ErrorInfo(code=ErrorCode.INVALID_INPUT, message="You already made this exact call several times. Do something different or call finish_step."),

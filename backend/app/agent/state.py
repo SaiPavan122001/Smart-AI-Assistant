@@ -17,6 +17,7 @@ from app.security.injection import InjectionGuard
 from app.state.events import EventBus
 from app.state.machine import transition
 from app.state.repository import Repository
+from app.tools.loop_guard import LoopGuard
 from app.utils.control import CancelToken, PauseGate
 from app.utils.ids import utcnow
 
@@ -33,6 +34,9 @@ class TaskHandle:
     guard: InjectionGuard = field(default_factory=InjectionGuard)
     cache: ObservationCache = field(default_factory=ObservationCache)
     denied: set[str] = field(default_factory=set)
+    loop_guard: LoopGuard = field(
+        default_factory=LoopGuard
+    )  # action ledger + loop detection for this task
     asyncio_task: Any = None
 
 

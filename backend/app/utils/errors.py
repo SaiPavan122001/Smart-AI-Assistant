@@ -21,6 +21,8 @@ class ErrorCode(StrEnum):
     TIMEOUT = "timeout"
     CANCELLED = "cancelled"
     LIMIT_EXCEEDED = "limit_exceeded"
+    BLOCKED_BY_SITE = "blocked_by_site"  # bot check / CAPTCHA: never bypassed
+    LOOP_DETECTED = "loop_detected"  # the agent is repeating actions without progress
     # security
     POLICY_DENIED = "policy_denied"
     APPROVAL_DENIED = "approval_denied"

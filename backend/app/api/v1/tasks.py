@@ -42,6 +42,7 @@ async def create_task(body: CreateTaskRequest, request: Request, c: ContainerDep
         body.instruction,
         session_id=request.headers.get("x-session-id"),
         request_id=getattr(request.state, "request_id", None),
+        idempotency_key=request.headers.get("idempotency-key"),
     )
     return TaskSummary.from_task(task)
 

@@ -13,7 +13,7 @@ LAYERS: list[set[str]] = [
     {"utils"},
     {"models", "config"},
     {"observability", "perception", "recovery", "security", "permissions", "state"},
-    {"llm", "database"},
+    {"llm", "database", "search"},
     {"tools"},
     {"verification"},
     {"planner"},

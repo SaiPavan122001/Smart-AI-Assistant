@@ -8,7 +8,7 @@ from app.tools.terminal.tools import TERMINAL_TOOLS
 
 
 def build_registry(*, include_browser: bool = True, include_desktop: bool = True,
-                   include_vision: bool = True) -> ToolRegistry:  # fmt: skip
+                   include_vision: bool = True, include_search: bool = True) -> ToolRegistry:  # fmt: skip
     registry = ToolRegistry()
     for cls in [*FILESYSTEM_TOOLS, *TERMINAL_TOOLS]:
         registry.register(cls())
@@ -21,6 +21,11 @@ def build_registry(*, include_browser: bool = True, include_desktop: bool = True
         from app.tools.desktop.tools import DESKTOP_TOOLS
 
         for cls in DESKTOP_TOOLS:
+            registry.register(cls())
+    if include_search:
+        from app.tools.search.tools import SEARCH_TOOLS
+
+        for cls in SEARCH_TOOLS:
             registry.register(cls())
     if include_vision:
         from app.tools.vision.tools import VISION_TOOLS

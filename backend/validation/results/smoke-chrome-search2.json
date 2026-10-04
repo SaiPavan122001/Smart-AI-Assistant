@@ -1,0 +1,67 @@
+{
+  "task_id": "task_cc5b66970d82402a",
+  "status": "COMPLETED",
+  "instruction": "Open Chrome and search for Java Spring Boot official documentation.",
+  "summary": "Completed: 2/2 steps succeeded and the result was verified.\nAnswer: The official Java Spring Boot documentation has been opened in Chrome at https://docs.spring.io/spring-boot/index.html.",
+  "answer": "The official Java Spring Boot documentation has been opened in Chrome at https://docs.spring.io/spring-boot/index.html.",
+  "verified": true,
+  "error": null,
+  "llm_calls": 1,
+  "vision_calls": 0,
+  "tool_calls": 2,
+  "executed_tool_calls": 2,
+  "replayed_calls": 0,
+  "replans": 0,
+  "recoveries": 0,
+  "recovery_events": [],
+  "launch_tool_calls": 1,
+  "approvals": 0,
+  "loop_guard_triggered": false,
+  "identical_side_effect_repeats": {},
+  "tools": [
+    [
+      "web_search",
+      "ok",
+      "allow"
+    ],
+    [
+      "browser_open",
+      "ok",
+      "allow"
+    ]
+  ],
+  "task_executions_in_db": 6,
+  "duration_s": 8.3,
+  "cost_usd": 0.0123,
+  "model": "openrouter/openai/gpt-4.1",
+  "wall_s": 12.0,
+  "approvals_asked": [],
+  "window_events": [
+    {
+      "t": 5.9,
+      "ev": "OPEN",
+      "hwnd": 4656052,
+      "proc": "chrome.exe",
+      "title": "Untitled - Google Chrome"
+    },
+    {
+      "t": 12.0,
+      "ev": "CLOSE",
+      "hwnd": 4656052,
+      "proc": "chrome.exe",
+      "title": "Spring Boot :: Spring Boot - Google Chrome"
+    }
+  ],
+  "real_opens": {
+    "calc.exe": 0,
+    "chrome.exe": 1,
+    "calculatorapp.exe": 0,
+    "notepad.exe": 0
+  },
+  "real_closes": {
+    "calc.exe": 0,
+    "chrome.exe": 1,
+    "calculatorapp.exe": 0,
+    "notepad.exe": 0
+  }
+}

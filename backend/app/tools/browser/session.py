@@ -229,6 +229,23 @@ class BrowserSession:
             s.current_url, s.page_title = "", ""
         return s
 
+    async def detect_block(self) -> str | None:
+        """Reason string if the current page is a bot-check / CAPTCHA challenge (never solved or bypassed)."""
+        from app.tools.browser.blocks import classify_block
+
+        if not self.has_page:
+            return None
+        s = self.state
+        try:
+            probe = await self.page.evaluate(
+                "() => { const t = document.body ? document.body.innerText : ''; return [t.length, t.slice(0, 2500)]; }"
+            )
+        except PlaywrightError:
+            return classify_block(s.current_url or "", s.page_title or "", "")
+        return classify_block(
+            s.current_url or "", s.page_title or "", str(probe[1]), total_chars=int(probe[0])
+        )
+
     def compact_state(self) -> dict[str, Any]:
         s = self.state
         return {

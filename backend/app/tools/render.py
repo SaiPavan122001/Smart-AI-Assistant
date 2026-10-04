@@ -9,7 +9,7 @@ from app.models.tool import ToolResult
 from app.security.injection import wrap_untrusted
 
 
-def _compact(value: Any, limit: int) -> str:
+def compact_json(value: Any, limit: int) -> str:
     text = json.dumps(value, ensure_ascii=False, default=str, separators=(",", ":"))
     return text if len(text) <= limit else text[: limit - 20] + '…"[truncated]"'
 
@@ -23,7 +23,7 @@ def render_result(result: ToolResult, *, max_chars: int = 6000) -> str:
             hint = f" [{err.code.value}]"
         body = f"ERROR{hint}: {err.message if err else 'failed'}"
         if err and err.details:
-            body += f" details={_compact(err.details, max_chars)}"
+            body += f" details={compact_json(err.details, max_chars)}"
         if result.untrusted and err and err.details:
             return wrap_untrusted(result.tool, body, findings=result.injection_findings)
         return body
@@ -31,7 +31,7 @@ def render_result(result: ToolResult, *, max_chars: int = 6000) -> str:
     if result.summary:
         parts.append(result.summary)
     if result.data:
-        parts.append(_compact(result.data, max_chars))
+        parts.append(compact_json(result.data, max_chars))
     if result.cached:
         parts.append("(cached result; environment unchanged since last identical call)")
     text = "\n".join(parts) or "ok"

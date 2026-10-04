@@ -53,6 +53,9 @@ class Plan(BaseModel):
     steps: list[PlanStep]
     # Conditions that must hold for the *original request* to count as done.
     success_criteria: list[VerificationSpec] = Field(default_factory=list)
+    # What to tell the user, resolved deterministically from recorded step outputs, e.g.
+    # 'The page title is {{steps.s2.data.title}}'. Used when no adaptive step produced an answer.
+    answer_template: str | None = None
     created_at: datetime = Field(default_factory=utcnow)
 
     def step(self, step_id: str) -> PlanStep:

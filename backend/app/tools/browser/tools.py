@@ -66,6 +66,18 @@ class Target(BaseModel):
 
 
 # ----------------------------------------------------------------------------- open / navigate
+async def _raise_if_blocked(session: Any) -> None:
+    """After an action that may have landed on a challenge page: stop, report, never bypass."""
+    reason = await session.detect_block()
+    if reason:
+        st = session.compact_state()
+        raise AgentError(
+            f"The site is showing a bot check ({reason}) at {st['url']}. I will not try to solve or bypass it. "
+            "For information lookups use the web_search tool, then open a result with browser_open.",
+            code=ErrorCode.BLOCKED_BY_SITE, details={"url": st["url"], "reason": reason},
+        )  # fmt: skip
+
+
 class OpenInput(BaseModel):
     url: str | None = Field(default=None, description="Optional http(s) URL to open")
     new_tab: bool = False
@@ -73,6 +85,7 @@ class OpenInput(BaseModel):
 
 class BrowserOpen(Tool[OpenInput]):
     name = "browser_open"
+    establishes_state = True
     description = "Open the browser (isolated session for this task), optionally at a URL, optionally in a new tab."
     capability = Capability.BROWSER
     Input = OpenInput
@@ -97,6 +110,7 @@ class BrowserOpen(Tool[OpenInput]):
         elif args.url:
             await session.navigate(args.url)
         await session.refresh_state()
+        await _raise_if_blocked(session)
         st = session.compact_state()
         return ToolOutput(
             data=st,
@@ -134,6 +148,7 @@ class BrowserNavigate(Tool[NavInput]):
             st = session.compact_state()
         else:
             st = await session.navigate(args.url)
+        await _raise_if_blocked(session)
         return ToolOutput(
             data=st,
             summary=f"Navigated: {st['title'] or '(no title)'} — {st['url']}",
@@ -255,6 +270,7 @@ class BrowserClick(Tool[ClickInput]):
         session = await _session(ctx)
         loc, el = await session.resolve_target(ref=args.ref, query=args.query, role=args.role)
         result = await session.click(loc, el)
+        await _raise_if_blocked(session)
         label = el.name if el else (args.query or args.ref)
         return ToolOutput(
             data=result, summary=f'Clicked {el.role if el else "element"} "{(label or "")[:60]}" → {result["url"]}',
@@ -301,6 +317,8 @@ class BrowserType(Tool[TypeInput]):
             ref=args.ref, query=args.query, role=args.role or "textbox"
         )
         result = await session.type_text(loc, args.text, clear=args.clear, submit=args.submit)
+        if args.submit:
+            await _raise_if_blocked(session)
         masked = bool(el and el.sensitive)
         shown = "***" if masked else (args.text if len(args.text) <= 60 else args.text[:57] + "...")
         return ToolOutput(
@@ -359,6 +377,7 @@ class DownloadInput(BaseModel):
 
 class BrowserDownload(Tool[DownloadInput]):
     name = "browser_download"
+    returns = "path, filename, size, url"
     description = "Download a file to an allowed folder, via direct URL (HTTP API) or by clicking a download control. Executable file types are blocked."
     capability = Capability.BROWSER
     Input = DownloadInput

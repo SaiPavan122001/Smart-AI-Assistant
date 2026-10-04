@@ -88,6 +88,45 @@ async def main(which: str) -> None:
                 element_role="document",
                 expect_value_contains="Hello from my AI assistant.",
             )
+        elif (
+            which == "notepad-find"
+        ):  # read-only: how do plausible LLM wordings resolve against real Notepad?
+            await call("desktop_launch", app="notepad")
+            await asyncio.sleep(2.0)
+            for q, role in [
+                ("text area", None),
+                ("Notepad text area", None),
+                ("text editor", None),
+                ("editor", None),
+                ("text box", "textbox"),
+                ("document", None),
+                ("Text editor", "document"),
+                ("text area", "document"),
+            ]:
+                await call(
+                    "desktop_find_element",
+                    window_process="notepad.exe",
+                    query=q,
+                    **({"role": role} if role else {}),
+                )
+        elif which == "calc-find":
+            await call("desktop_launch", app="calculator")
+            await asyncio.sleep(2.0)
+            for q in (
+                "2",
+                "5",
+                "multiply",
+                "x",
+                "×",
+                "Multiply by",
+                "equals",
+                "=",
+                "Two",
+                "Display",
+            ):
+                r = await call("desktop_find_element", window_title="Calculator", query=q)
+                for m in (r.data.get("matches") or [])[:3]:
+                    print("     ", m)
         elif which == "chrome":
             await call("browser_open", url="https://www.google.com")
             await call("browser_read", mode="elements")

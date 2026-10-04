@@ -1,0 +1,81 @@
+{
+  "task_id": "task_6f7e7b2453c8449d",
+  "status": "FAILED",
+  "instruction": "Open Chrome, go to https://example.com, and tell me the page title.",
+  "summary": "Failed: 2/3 steps succeeded.\nReason: The model could not produce a valid plan: s4: browser_read args: mode: String should match pattern '^(text|aria|elements|links|forms)$'; s4: browser_read args: max_chars: Input should be greater than or equal to 200",
+  "answer": null,
+  "verified": false,
+  "error": "plan_invalid: The model could not produce a valid plan: s4: browser_read args: mode: String should match pattern '^(text|aria|elements|links|forms)$'; s4: browser_read args: max_chars: Input should be greater than ",
+  "llm_calls": 6,
+  "vision_calls": 0,
+  "tool_calls": 4,
+  "executed_tool_calls": 4,
+  "replayed_calls": 0,
+  "replans": 1,
+  "recoveries": 3,
+  "recovery_events": [
+    "refresh_state_retry",
+    "adaptive_fallback",
+    "replan"
+  ],
+  "launch_tool_calls": 1,
+  "approvals": 0,
+  "loop_guard_triggered": false,
+  "identical_side_effect_repeats": {},
+  "tools": [
+    [
+      "browser_open",
+      "ok",
+      "allow"
+    ],
+    [
+      "browser_navigate",
+      "ok",
+      "allow"
+    ],
+    [
+      "browser_read",
+      "ok",
+      "allow"
+    ],
+    [
+      "browser_read",
+      "ok",
+      "allow"
+    ]
+  ],
+  "task_executions_in_db": 3,
+  "duration_s": 18.0,
+  "cost_usd": 0.0684,
+  "model": "openrouter/openai/gpt-4.1",
+  "wall_s": 25.3,
+  "approvals_asked": [],
+  "window_events": [
+    {
+      "t": 9.9,
+      "ev": "OPEN",
+      "hwnd": 4129838,
+      "proc": "chrome.exe",
+      "title": "Untitled - Google Chrome"
+    },
+    {
+      "t": 25.2,
+      "ev": "CLOSE",
+      "hwnd": 4129838,
+      "proc": "chrome.exe",
+      "title": "Example Domain - Google Chrome"
+    }
+  ],
+  "real_opens": {
+    "calculatorapp.exe": 0,
+    "notepad.exe": 0,
+    "chrome.exe": 1,
+    "calc.exe": 0
+  },
+  "real_closes": {
+    "calculatorapp.exe": 0,
+    "notepad.exe": 0,
+    "chrome.exe": 1,
+    "calc.exe": 0
+  }
+}

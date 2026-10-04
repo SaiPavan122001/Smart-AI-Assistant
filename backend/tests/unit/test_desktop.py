@@ -266,3 +266,63 @@ def test_default_tree_depth_covers_uwp_apps() -> None:
     from app.config.settings import DesktopSettings
 
     assert DesktopSettings().max_tree_depth >= 12
+
+
+def test_generic_text_entry_descriptors_resolve_by_role_but_never_guess_between_several() -> None:
+    """Regression (live run C): 'text area' / 'Notepad text area' could not find Notepad's single 'Text editor' control."""
+    from app.tools.desktop.service import is_text_entry_descriptor
+
+    notepad = [
+        UIElement(ref="m", role="menuitem", name="Edit"),
+        UIElement(ref="d", role="document", name="Text editor"),
+        UIElement(ref="b", role="button", name="Add New Tab"),
+    ]
+    for q in ("text area", "Notepad text area", "text box", "the editor", "input field"):
+        r = score_ui(notepad, q, None, None, "Untitled - Notepad")
+        assert r and r[0][1].ref == "d" and r[0][0] >= 50, q
+    assert [e.ref for _, e in score_ui(notepad, "text area", "document", None, "Notepad")] == ["d"]
+    # several text boxes: equal scores -> the service reports ambiguity instead of guessing
+    form = [
+        UIElement(ref="a", role="textbox", name="Name"),
+        UIElement(ref="b", role="textbox", name="Email"),
+    ]
+    top = score_ui(form, "text field", None, None, "Form")
+    assert len(top) == 2 and top[0][0] == top[1][0]
+    # a real name still wins over the generic role match
+    named = [
+        UIElement(ref="a", role="textbox", name="Input"),
+        UIElement(ref="b", role="textbox", name="Other"),
+    ]
+    assert score_ui(named, "input", None, None, "")[0][1].ref == "a"
+    # names and specific targets are not descriptors
+    assert not is_text_entry_descriptor("Save button") and not is_text_entry_descriptor(
+        "Search box"
+    )
+    assert not score_ui(notepad, "Submit", None, None, "Notepad")
+
+
+def test_text_entry_descriptor_falls_back_when_the_requested_role_is_absent() -> None:
+    notepad = [UIElement(ref="d", role="document", name="Text editor")]
+    assert [e.ref for _, e in score_ui(notepad, "text box", "textbox", None, "Notepad")] == ["d"]
+
+
+def test_symbol_queries_match_spoken_names_and_short_queries_never_match_inside_words() -> None:
+    """Regression (live Calculator probe): '2' found nothing; 'x' matched Maximize/Expression/Six."""
+    calc = [
+        UIElement(ref="2", role="button", name="Two", automation_id="num2Button"),
+        UIElement(ref="m", role="button", name="Multiply by", automation_id="multiplyButton"),
+        UIElement(ref="e", role="button", name="Equals"),
+        UIElement(ref="z", role="button", name="Maximize Calculator"),
+        UIElement(ref="x", role="text", name="Expression is"),
+        UIElement(ref="6", role="button", name="Six"),
+    ]
+    for q, ref in (("2", "2"), ("*", "m"), ("×", "m"), ("x", "m"), ("=", "e"), ("multiply", "m")):
+        top = score_ui(calc, q, None, None, "Calculator")
+        assert top and top[0][1].ref == ref and top[0][0] >= 50, q
+    assert [e.ref for _, e in score_ui(calc, "x", None, None, "Calculator")] == [
+        "m"
+    ]  # not Maximize/Expression/Six
+    assert score_ui(calc, "ma", None, None, "Calculator") == []  # 2 chars: whole words only
+    assert not score_ui(
+        calc, "9", None, None, "Calculator"
+    )  # no 'Nine' on this keypad -> not found, not guessed

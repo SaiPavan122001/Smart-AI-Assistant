@@ -206,6 +206,10 @@ async def browser_text(p: dict[str, Any], ctx: ExecutionContext) -> CheckOutcome
     sess = _browser(ctx)
     data = await sess.read(mode="text", selector=p.get("selector"), max_chars=60000)
     text = data.get("text", "")
+    if not p.get(
+        "selector"
+    ):  # page-wide: the title is part of "what the page says" (it is often absent from body text)
+        text = f"{data.get('title', '')} {text}"
     ok = str(p["contains"]).lower() in text.lower()
     return CheckOutcome(
         ok,

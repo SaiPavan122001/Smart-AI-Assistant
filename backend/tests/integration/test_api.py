@@ -403,3 +403,41 @@ def test_websocket_live_stream_for_running_task(api: Api) -> None:
             got.append(ws.receive_json()["type"])
     assert got.index("approval_required") < got.index("approval_denied") < got.index("task_failed")
     assert t["id"]
+
+
+# ----------------------------------------------------------------------------- execution-loop regressions
+def test_repeated_delivery_of_the_same_start_request_runs_one_task(api: Api) -> None:
+    """POST retries / double clicks carry the same Idempotency-Key: exactly one task, one plan."""
+    api.llm.push(structured(fs_plan(api.root)))
+    hdr = {**AUTH, "Idempotency-Key": "click-1"}
+    a = api.c.post("/api/v1/tasks", json={"instruction": "make folder"}, headers=hdr).json()
+    b = api.c.post("/api/v1/tasks", json={"instruction": "make folder"}, headers=hdr).json()
+    assert a["id"] == b["id"]
+    api.wait_done(a["id"])
+    c = api.c.post(
+        "/api/v1/tasks", json={"instruction": "make folder"}, headers=hdr
+    ).json()  # a late retry
+    assert c["id"] == a["id"]
+    assert api.c.get("/api/v1/tasks", headers=AUTH).json()["items"].__len__() == 1
+    assert api.llm.purposes.count("plan") == 1
+
+
+def test_websocket_reconnects_only_replay_state_and_never_execute(api: Api) -> None:
+    api.llm.push(structured(fs_plan(api.root)))
+    t = api.create("make folder")
+    api.wait_done(t["id"])
+    llm_calls = len(api.llm.requests)
+    tools_before = api.c.get(f"/api/v1/tasks/{t['id']}/tool-calls", headers=AUTH).json()
+    for _ in range(3):  # reconnect storm, from the start and from the middle
+        for q in ("", "?after_seq=3"):
+            with api.c.websocket_connect(
+                f"/api/v1/ws/tasks/{t['id']}{q}", subprotocols=["saa.v1", f"bearer.{TOKEN}"]
+            ) as ws:
+                assert ws.receive_json()["task_id"] == t["id"]
+    with api.c.websocket_connect("/api/v1/ws/events", subprotocols=["saa.v1", f"bearer.{TOKEN}"]):
+        pass
+    assert len(api.llm.requests) == llm_calls, "replay must not call the model"
+    assert api.c.get(f"/api/v1/tasks/{t['id']}/tool-calls", headers=AUTH).json() == tools_before
+    assert len(api.c.get("/api/v1/tasks", headers=AUTH).json()["items"]) == 1, (
+        "no second task was created"
+    )

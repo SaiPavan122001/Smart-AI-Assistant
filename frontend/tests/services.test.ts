@@ -31,6 +31,17 @@ describe("api client", () => {
     expect((init.headers as Record<string, string>)["Content-Type"]).toBe("application/json");
   });
 
+  it("sends an Idempotency-Key so a repeated delivery starts one task, and a fresh key per user action", async () => {
+    const f = vi.spyOn(globalThis, "fetch").mockImplementation(() => json({ id: "t1" }, 201));
+    await api.createTask("do it");
+    await api.createTask("do it");
+    await api.createTask("do it", "fixed-key");
+    const keys = f.mock.calls.map((c) => ((c[1] as RequestInit).headers as Record<string, string>)["Idempotency-Key"]);
+    expect(keys[0]).toBeTruthy();
+    expect(keys[0]).not.toBe(keys[1]);
+    expect(keys[2]).toBe("fixed-key");
+  });
+
   it("maps structured backend errors to ApiError", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(() =>
       json({ error: { code: "kill_switch_active", message: "The emergency stop is engaged.", request_id: "req_9" } }, 409),

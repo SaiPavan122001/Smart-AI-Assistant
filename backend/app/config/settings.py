@@ -157,7 +157,20 @@ class LimitSettings(BaseModel):
     max_shell_operations: int = 40
     max_adaptive_iterations: int = 12
     approval_timeout_s: float = 600.0
-    max_concurrent_tasks: int = 2
+    # One computer, one agent: concurrent tasks would drive the same desktop/keyboard at once.
+    max_concurrent_tasks: int = 1
+    # Loop protection (secondary defence; the primary one is the per-task action ledger):
+    max_identical_actions: int = 6  # same side-effecting call executed this many times in a row
+    max_cycle_repeats: int = 3  # an A,B,A,B,... action cycle repeated this many times
+    max_no_progress: int = 5  # consecutive tool calls with identical call AND identical result
+
+
+class SearchSettings(BaseModel):
+    """Web search providers tried in order. Keys come from the secret chain (BRAVE_API_KEY, TAVILY_API_KEY)."""
+
+    providers: list[Literal["brave", "tavily", "duckduckgo"]] = ["brave", "tavily", "duckduckgo"]
+    max_results: int = Field(default=8, ge=1, le=20)
+    timeout_s: float = 15.0
 
 
 class SecretsSettings(BaseModel):
@@ -206,6 +219,7 @@ class Settings(BaseSettings):
     vision: VisionSettings = Field(default_factory=VisionSettings)
     database: DatabaseSettings = Field(default_factory=DatabaseSettings)
     browser: BrowserSettings = Field(default_factory=BrowserSettings)
+    search: SearchSettings = Field(default_factory=SearchSettings)
     filesystem: FilesystemSettings = Field(default_factory=FilesystemSettings)
     terminal: TerminalSettings = Field(default_factory=TerminalSettings)
     desktop: DesktopSettings = Field(default_factory=DesktopSettings)

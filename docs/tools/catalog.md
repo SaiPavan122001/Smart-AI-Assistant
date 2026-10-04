@@ -270,6 +270,21 @@ Upload a local file through a file input. Disabled unless explicitly enabled; al
 | `role` | string | no | button / link / textbox / checkbox / combobox / radio |
 | `path` | string | yes |  |
 
+## Api
+
+| Tool | Base risk | Approval | Timeout | Read-only | Idempotent | Untrusted output |
+|---|---|---|---|---|---|---|
+| `web_search` | low | policy | 45s | yes | yes | yes |
+
+### `web_search`
+
+Search the web through a structured search provider (API) and get titles, URLs and snippets. Prefer this over typing into a search engine in the browser: it cannot be blocked by a CAPTCHA. Open a result afterwards with browser_open if you need the page itself.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `query` | string | yes | What to search the web for |
+| `max_results` | integer | no |  |
+
 ## Desktop
 
 | Tool | Base risk | Approval | Timeout | Read-only | Idempotent | Untrusted output |
@@ -352,6 +367,7 @@ Launch an allowlisted application (optionally opening a folder/file inside allow
 |---|---|---|---|
 | `app` | string | yes | Allowlisted application name, e.g. 'vscode', 'notepad', 'calculator', 'explorer' |
 | `args` | string[] | no | Arguments; file/folder paths must be inside allowed folders |
+| `new_instance` | boolean | no | Start another instance even if the app is already open (default: reuse the open window) |
 
 ### `desktop_read`
 

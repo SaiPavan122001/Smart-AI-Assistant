@@ -12,10 +12,12 @@ All backend calls run on one dedicated COM worker thread.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import re
 import shutil
 import time
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from typing import Any, TypeVar, cast
 
 from app.config.settings import DesktopSettings
@@ -40,14 +42,87 @@ _ROLE_ALIASES = {
 }  # fmt: skip
 
 
+# Launching these with no arguments legitimately opens a NEW window (and the shell owns many windows).
+_ALWAYS_NEW_WINDOW = frozenset({"explorer"})
+
+
+def _same_app(exe: str, process: str) -> bool:
+    """'calc.exe' ~ 'CalculatorApp.exe', 'notepad.exe' ~ 'Notepad.exe', 'code' ~ 'Code.exe'."""
+    a, b = Path(exe).stem.lower(), Path(process).stem.lower()
+    return bool(a and b) and (a == b or b.startswith(a) or a.startswith(b))
+
+
 def _tokens(s: str) -> list[str]:
     return _WORD.findall(s.lower())
 
 
+# How UI Automation *names* keys/symbols: the query "2" or "*" must find the control "Two" / "Multiply by".
+_SYMBOL_NAMES: dict[str, tuple[str, ...]] = {
+    "0": ("zero",), "1": ("one",), "2": ("two",), "3": ("three",), "4": ("four",), "5": ("five",),
+    "6": ("six",), "7": ("seven",), "8": ("eight",), "9": ("nine",),
+    "+": ("plus", "add"), "-": ("minus", "subtract"), "−": ("minus", "subtract"),
+    "*": ("multiply by", "multiply", "times"), "x": ("multiply by",), "×": ("multiply by", "times"),
+    "/": ("divide by", "divide"), "÷": ("divide by", "divide"), "=": ("equals", "equal"),
+    ".": ("decimal separator", "point"), "%": ("percent",),
+}  # fmt: skip
+
+
+def _query_variants(q: str) -> list[str]:
+    """The query itself plus, for a bare symbol, the spoken names UI Automation gives that control."""
+    return [q, *_SYMBOL_NAMES.get(q, ())]
+
+
+def _name_score(q: str, name: str) -> float:
+    if name == q:
+        return 100.0
+    if name.startswith(q) and len(q) >= 3:
+        return 85.0
+    if (
+        len(q) < 3
+    ):  # 1-2 characters match only whole words, never inside other words ('x' in 'Maximize')
+        return 70.0 if q in _tokens(name) else 0.0
+    if q in name:
+        return 70.0
+    return partial_score(q, name)
+
+
+# Generic words describing a text-entry control rather than naming one ("text area", "the editor", "input box").
+_TEXT_ENTRY_WORDS = frozenset({
+    "text", "area", "box", "field", "input", "editor", "edit", "editing", "textarea", "textbox", "document",
+    "main", "content", "body", "entry", "the", "a", "an", "of", "for", "in", "typing", "write", "writing",
+})  # fmt: skip
+_TEXT_ENTRY_ROLES = frozenset({"document", "textbox"})
+
+
+def is_text_entry_descriptor(query: str, window_title: str = "") -> bool:
+    """True when the query only *describes* a text-entry control ("Notepad text area").
+
+    Words that name the window itself (they appear in its title) are dropped first, so the model
+    mentioning the app does not turn a generic descriptor into an unmatchable name.
+    """
+    title_words = set(_tokens(window_title))
+    words = [w for w in _tokens(query) if w not in title_words]
+    return bool(words) and all(w in _TEXT_ENTRY_WORDS for w in words)
+
+
 def score_ui(
-    elements: list[UIElement], query: str | None, role: str | None, automation_id: str | None
+    elements: list[UIElement],
+    query: str | None,
+    role: str | None,
+    automation_id: str | None,
+    window_title: str = "",
+    *,
+    _descriptors: bool = True,
 ) -> list[tuple[float, UIElement]]:
     q = (query or "").lower().strip()
+    if _descriptors and q and not automation_id and is_text_entry_descriptor(q, window_title):
+        by_role = _score_text_entry(elements, role)
+        named = score_ui(elements, query, role, automation_id, window_title, _descriptors=False)
+        best: dict[str, tuple[float, UIElement]] = {}
+        for s, el in [*by_role, *named]:  # a real name match always beats the generic role match
+            if el.ref not in best or s > best[el.ref][0]:
+                best[el.ref] = (s, el)
+        return sorted(best.values(), key=lambda t: -t[0])
     want = _ROLE_ALIASES.get((role or "").lower(), (role or "").lower() or None)
     out: list[tuple[float, UIElement]] = []
     for el in elements:
@@ -59,14 +134,8 @@ def score_ui(
                 continue
         name = el.name.lower()
         if q:
-            if name == q:
-                s = max(s, 100.0)
-            elif name.startswith(q):
-                s = max(s, 85.0)
-            elif q in name:
-                s = max(s, 70.0)
-            else:
-                s = max(s, partial_score(q, name))
+            for cand in _query_variants(q):
+                s = max(s, _name_score(cand, name))
         if s <= 0:
             continue
         if want:
@@ -76,6 +145,19 @@ def score_ui(
         if s < SUGGEST_THRESHOLD:
             continue
         out.append((s, el))
+    out.sort(key=lambda t: -t[0])
+    return out
+
+
+def _score_text_entry(elements: list[UIElement], role: str | None) -> list[tuple[float, UIElement]]:
+    """Role-based match for generic text-entry descriptors. Several candidates stay *ambiguous* (never guessed)."""
+    want = _ROLE_ALIASES.get((role or "").lower(), (role or "").lower()) or None
+    roles = _TEXT_ENTRY_ROLES
+    if want in _TEXT_ENTRY_ROLES and any(el.role == want for el in elements):
+        roles = frozenset(
+            {want}
+        )  # the requested role exists: honour it (apps differ: Notepad exposes 'document')
+    out = [(60.0 - (0 if el.enabled else 8.0), el) for el in elements if el.role in roles]
     out.sort(key=lambda t: -t[0])
     return out
 
@@ -212,12 +294,12 @@ class DesktopService:
         limit: int = 5,
     ) -> tuple[Snapshot, list[tuple[float, UIElement]], bool]:
         snap = await self.inspect(sel, max_elements=max(self.settings.max_tree_elements, 250))
-        ranked = score_ui(snap.elements, query, role, automation_id)
+        ranked = score_ui(snap.elements, query, role, automation_id, snap.window.title)
         if not ranked:
             snap = await self.inspect(
                 sel, max_elements=max(self.settings.max_tree_elements, 250), fresh=True
             )
-            ranked = score_ui(snap.elements, query, role, automation_id)
+            ranked = score_ui(snap.elements, query, role, automation_id, snap.window.title)
         ambiguous = len(ranked) > 1 and ranked[0][0] >= 50 and ranked[0][0] - ranked[1][0] < 5
         return snap, ranked[:limit], ambiguous
 
@@ -345,14 +427,25 @@ class DesktopService:
                 ),
             )
 
-    async def launch(self, app: str, args: list[str]) -> dict[str, Any]:
+    async def launch(
+        self, app: str, args: list[str], *, new_instance: bool = False
+    ) -> dict[str, Any]:
         exe_name = self.settings.apps.get(app.lower())
         if not exe_name:
             raise PolicyViolation(
                 f"'{app}' is not a launchable application. Allowed: {', '.join(sorted(self.settings.apps))}"
             )
         exe = shutil.which(exe_name) or exe_name
-        before = {w.handle for w in await self.windows()}
+        open_now = await self.windows()
+        before = {w.handle for w in open_now}
+        if not new_instance and not args and Path(exe).stem.lower() not in _ALWAYS_NEW_WINDOW:
+            # State check first: an app that is already open is reused, never relaunched.
+            running = [w for w in open_now if _same_app(exe, w.process)]
+            if running:
+                existing = next((w for w in running if w.active), running[0])
+                with contextlib.suppress(Exception):  # bringing it forward is best effort
+                    await self._run(self.backend.focus, WindowSel(handle=existing.handle))
+                return {"pid": existing.pid, "window": existing.model_dump(), "reused": True}
         pid: int = await self._run(self.backend.launch, exe, args)
         self.invalidate()
         win: WindowInfo | None = None

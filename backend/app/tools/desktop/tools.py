@@ -516,10 +516,15 @@ class LaunchInput(BaseModel):
         default_factory=list,
         description="Arguments; file/folder paths must be inside allowed folders",
     )
+    new_instance: bool = Field(
+        default=False,
+        description="Start another instance even if the app is already open (default: reuse the open window)",
+    )
 
 
 class DesktopLaunch(Tool[LaunchInput]):
     name = "desktop_launch"
+    establishes_state = True
     description = (
         "Launch an allowlisted application (optionally opening a folder/file inside allowed roots)."
     )
@@ -559,10 +564,15 @@ class DesktopLaunch(Tool[LaunchInput]):
             str(ctx.paths.resolve(a, cwd=ctx.cwd).path) if not a.startswith("-") else a
             for a in args.args
         ]
-        info = await svc.launch(args.app, resolved)
+        info = await svc.launch(args.app, resolved, new_instance=args.new_instance)
         win = info.get("window")
         return ToolOutput(
-            data=info, summary=f"Launched {args.app}" + (f"; window '{win['title'][:50]}' appeared" if win else "; no new window detected yet"),
+            data=info,
+            summary=(
+                f"{args.app} is already open; reused window '{win['title'][:50]}' (no new instance launched)"
+                if info.get("reused") and win
+                else f"Launched {args.app}" + (f"; window '{win['title'][:50]}' appeared" if win else "; no new window detected yet")
+            ),
             perception_source="uia", artifacts={"app": args.app, "pid": info["pid"]},
         )  # fmt: skip
 

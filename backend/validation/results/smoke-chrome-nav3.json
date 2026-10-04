@@ -1,0 +1,67 @@
+{
+  "task_id": "task_971f17db29f84497",
+  "status": "COMPLETED",
+  "instruction": "Open Chrome, go to https://example.com, and tell me the page title.",
+  "summary": "Completed: 2/2 steps succeeded and the result was verified.\nAnswer: The page title is 'Example Domain'.",
+  "answer": "The page title is 'Example Domain'.",
+  "verified": true,
+  "error": null,
+  "llm_calls": 2,
+  "vision_calls": 0,
+  "tool_calls": 2,
+  "executed_tool_calls": 2,
+  "replayed_calls": 0,
+  "replans": 0,
+  "recoveries": 0,
+  "recovery_events": [],
+  "launch_tool_calls": 1,
+  "approvals": 0,
+  "loop_guard_triggered": false,
+  "identical_side_effect_repeats": {},
+  "tools": [
+    [
+      "browser_open",
+      "ok",
+      "allow"
+    ],
+    [
+      "browser_read",
+      "ok",
+      "allow"
+    ]
+  ],
+  "task_executions_in_db": 5,
+  "duration_s": 3.0,
+  "cost_usd": 0.0236,
+  "model": "openrouter/openai/gpt-4.1",
+  "wall_s": 8.7,
+  "approvals_asked": [],
+  "window_events": [
+    {
+      "t": 6.9,
+      "ev": "OPEN",
+      "hwnd": 527148,
+      "proc": "chrome.exe",
+      "title": "Untitled - Google Chrome"
+    },
+    {
+      "t": 8.8,
+      "ev": "CLOSE",
+      "hwnd": 527148,
+      "proc": "chrome.exe",
+      "title": "Example Domain - Google Chrome"
+    }
+  ],
+  "real_opens": {
+    "calc.exe": 0,
+    "notepad.exe": 0,
+    "calculatorapp.exe": 0,
+    "chrome.exe": 1
+  },
+  "real_closes": {
+    "calc.exe": 0,
+    "notepad.exe": 0,
+    "calculatorapp.exe": 0,
+    "chrome.exe": 1
+  }
+}

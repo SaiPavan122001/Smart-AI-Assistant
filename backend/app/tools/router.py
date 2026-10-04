@@ -35,6 +35,7 @@ from app.permissions.policy import Action
 from app.state.repository import PermissionDecisionRecord, Repository, ToolCallRecord
 from app.tools.base import Tool, ToolOutput
 from app.tools.context import ExecutionContext
+from app.tools.loop_guard import Verdict, report_loop
 from app.tools.registry import ToolRegistry
 from app.utils.errors import (
     AgentError,
@@ -130,6 +131,14 @@ class ToolRouter:
                 "The user already refused this exact action in this task. It was NOT performed and will not be re-requested.",
                 started,
             )  # fmt: skip
+
+        # ---- action ledger: loop protection + idempotent state-establishing actions --------------
+        lg = ctx.loop_guard.check(orig_key, spec)
+        if lg.verdict is Verdict.BLOCKED:
+            await self._report_loop(ctx, call)
+            return await self._finish_failed(call, ctx, ErrorCode.LOOP_DETECTED, lg.reason, started)
+        if lg.verdict is Verdict.REPLAY and lg.done is not None:
+            return await self._replay(call, ctx, lg.done, orig_key)
 
         # ---- cache (read-only observations only) -------------------------------------
         cache_key = orig_key
@@ -253,6 +262,15 @@ class ToolRouter:
         duration_ms = (time.perf_counter() - started) * 1000
 
         if error is not None or output is None:
+            ctx.loop_guard.record(
+                orig_key,
+                spec,
+                ok=False,
+                summary=error.message if error else "no output",
+                data={},
+                artifacts={},
+            )
+            await self._report_loop(ctx, call)
             return await self._finish_failed(
                 call, ctx, (error.code if error else ErrorCode.INTERNAL),
                 error.message if error else "no output", started, attempts=attempts,
@@ -261,6 +279,11 @@ class ToolRouter:
             )  # fmt: skip
 
         result = await self._post_process(call, ctx, tool, output, duration_ms, attempts)
+        ctx.loop_guard.record(
+            orig_key, spec, ok=result.ok, summary=result.summary or (result.error.message if result.error else ""),
+            data=result.data, artifacts=result.artifacts,
+        )  # fmt: skip
+        await self._report_loop(ctx, call)
         if not spec.read_only:
             if spec.capability in (Capability.TERMINAL, Capability.FILESYSTEM):
                 ctx.cache.bump_all()  # commands/file ops can change anything
@@ -281,6 +304,28 @@ class ToolRouter:
                 duration_ms / 1000
             )
         return result
+
+    # ------------------------------------------------------------------ action ledger
+    async def _replay(
+        self, call: ToolCall, ctx: ExecutionContext, done: Any, key: str
+    ) -> ToolResult:
+        """An identical state-establishing action already succeeded: report it, do NOT execute it again."""
+        result = ToolResult(
+            tool_call_id=call.id, tool=call.tool, ok=True, cached=True, artifacts=done.artifacts,
+            data={**done.data, "replayed": True},
+            summary=f"Already done earlier in this task; NOT repeated: {done.summary}",
+        )  # fmt: skip
+        await ctx.event(
+            EventType.ACTION_COMPLETED, result.summary,
+            {"tool": call.tool, "ok": True, "replayed": True, "fingerprint": key},
+        )  # fmt: skip
+        await self._record(
+            ctx, call, result, None, "replayed", "identical action already performed in this task"
+        )
+        return result
+
+    async def _report_loop(self, ctx: ExecutionContext, call: ToolCall) -> None:
+        await report_loop(ctx, self.repo, call.tool)
 
     # ------------------------------------------------------------------ approval
     async def _ask(

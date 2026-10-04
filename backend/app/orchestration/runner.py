@@ -27,6 +27,7 @@ from app.recovery.engine import RecoveryEngine
 from app.state.events import EventBus
 from app.state.repository import AgentActionRecord, Repository
 from app.tools.context import ExecutionContext, ToolServices
+from app.tools.loop_guard import report_loop
 from app.tools.registry import ToolRegistry
 from app.tools.router import ToolRouter
 from app.utils.errors import AgentError, ErrorCode, ErrorInfo, LimitExceeded, TaskCancelled
@@ -171,6 +172,9 @@ class TaskRunner:
 
         # ---- Verify ---------------------------------------------------------------------
         for _round in range(self._settings.limits.max_replans + 1):
+            self._compose_answer(rs)
+            ctx.token.raise_if_cancelled()
+            self._raise_if_looping(ctx)
             await rs.set_status(TaskStatus.VERIFYING)
             results, ok = await self._verify_final(rs, ctx)
             rs.last_verification = results
@@ -209,6 +213,7 @@ class TaskRunner:
         while True:
             ctx.token.raise_if_cancelled()
             await ctx.pause.wait_if_paused(ctx.token)
+            self._raise_if_looping(ctx)
             pending = [s for s in rs.plan.steps if s.status is StepStatus.PENDING]
             if not pending:
                 return
@@ -242,8 +247,29 @@ class TaskRunner:
             await self._emit_usage(rs)
 
     # ================================================================== replanning
+    @staticmethod
+    def _compose_answer(rs: RunState) -> None:
+        """Fill the user-facing answer from the plan's template and recorded tool outputs (no LLM, no guessing)."""
+        tpl = rs.plan.answer_template if rs.plan else None
+        if rs.answer or not tpl:
+            return
+        try:
+            text = str(resolve(tpl, rs.scope)).strip()
+        except TemplateError:
+            return  # a field that was never produced: no answer is better than an invented one
+        if text:
+            rs.answer = text[:2000]
+
+    @staticmethod
+    def _raise_if_looping(ctx: ExecutionContext) -> None:
+        if ctx.loop_guard.tripped:
+            raise AgentError(ctx.loop_guard.tripped, code=ErrorCode.LOOP_DETECTED)
+
     async def _replan(self, rs: RunState, ctx: ExecutionContext, reason: str) -> None:
         assert rs.plan is not None and self.d.planner is not None
+        ctx.token.raise_if_cancelled()  # STOP must prevent a new LLM call and a new plan
+        await ctx.pause.wait_if_paused(ctx.token)
+        self._raise_if_looping(ctx)
         rs.replans_used += 1
         rs.handle.meter.usage.replans += 1
         await rs.set_status(TaskStatus.PLANNING, "Revising the plan")
@@ -278,6 +304,8 @@ class TaskRunner:
             rs.plan.success_criteria = outcome.plan.success_criteria
         if outcome.plan.summary:
             rs.plan.summary = outcome.plan.summary
+        if outcome.plan.answer_template:
+            rs.plan.answer_template = outcome.plan.answer_template
         await self.d.repo.save_agent_action(
             AgentActionRecord(
                 task_id=rs.task.id,
@@ -429,6 +457,7 @@ class TaskRunner:
             task_id=rs.task.id, services=self.d.services, token=h.token, pause=h.pause, meter=h.meter, guard=h.guard,
             grants=h.grants, cache=h.cache, cwd=Path(self._settings.filesystem.workspace), emit=rs.emit,
             set_status=rs.set_status, session_id=rs.task.session_id, request_id=rs.task.request_id, denied=h.denied,
+            loop_guard=h.loop_guard,
         )  # fmt: skip
 
     # ================================================================== finish
@@ -440,6 +469,9 @@ class TaskRunner:
         verification = verification or rs.last_verification
         # Never leave dangling approvals or browser/vision state behind.
         self.d.approvals.cancel_task(task.id)
+        await report_loop(
+            ctx, self.d.repo
+        )  # no-op unless the loop guard tripped without a router call after it
         if self.d.services.browser is not None:
             await self.d.services.browser.close_session(task.id)
         if self.d.services.vision is not None:

@@ -436,6 +436,8 @@
           "timeout",
           "cancelled",
           "limit_exceeded",
+          "blocked_by_site",
+          "loop_detected",
           "policy_denied",
           "approval_denied",
           "approval_timeout",
@@ -795,6 +797,17 @@
       },
       "Plan": {
         "properties": {
+          "answer_template": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answer Template"
+          },
           "assumptions": {
             "items": {
               "type": "string"
@@ -1716,6 +1729,11 @@
             "title": "Description",
             "type": "string"
           },
+          "establishes_state": {
+            "default": false,
+            "title": "Establishes State",
+            "type": "boolean"
+          },
           "exposed_to_llm": {
             "default": true,
             "title": "Exposed To Llm",
@@ -1747,6 +1765,11 @@
           },
           "retry": {
             "$ref": "#/components/schemas/RetryPolicy"
+          },
+          "returns": {
+            "default": "",
+            "title": "Returns",
+            "type": "string"
           },
           "returns_external_content": {
             "default": false,

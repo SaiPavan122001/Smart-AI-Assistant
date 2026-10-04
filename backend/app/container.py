@@ -28,6 +28,7 @@ from app.permissions.engine import PermissionEngine
 from app.permissions.policy import PermissionPolicy
 from app.planner.planner import Planner
 from app.registry import build_registry
+from app.search.factory import build_search_router
 from app.security.paths import PathPolicy
 from app.state.events import EventBus
 from app.state.memory import InMemoryRepository
@@ -90,6 +91,8 @@ class Container:
         if self.services.desktop is not None:
             self.services.desktop.shutdown()
         await self.log_sink.stop()
+        if self.services.search is not None and hasattr(self.services.search, "aclose"):
+            await self.services.search.aclose()
         for p in self._owned_providers:
             await p.aclose()
         await self.repo.close()
@@ -145,6 +148,7 @@ def build_container(
     *,
     repo: Repository | None = None,
     llm: LLMProvider | None = None,
+    search_router: Any = None,
     vision_llm: LLMProvider | None = None,
     desktop_backend: Any | None = None,
     enable_browser: bool | None = None,
@@ -229,6 +233,7 @@ def build_container(
                 min_confidence=settings.vision.min_confidence,
             )
 
+    search = search_router if search_router is not None else build_search_router(settings)
     services = ToolServices(
         settings=settings,
         path_policy=path_policy,
@@ -236,6 +241,7 @@ def build_container(
         browser=browser,
         desktop=desktop,
         vision=vision,
+        search=search,
     )
     registry = build_registry(
         include_browser=browser is not None,

@@ -37,11 +37,15 @@ class Tool(ABC, Generic[InT]):
     idempotent: ClassVar[bool] = False
     read_only: ClassVar[bool] = False
     cacheable: ClassVar[bool] = False
+    establishes_state: ClassVar[bool] = False
     cache_ttl_s: ClassVar[float] = 5.0
     audit: ClassVar[AuditPolicy] = AuditPolicy()
     exposed_to_llm: ClassVar[bool] = True
     returns_external_content: ClassVar[bool] = False
     output_schema: ClassVar[dict[str, Any]] = {}
+    returns: ClassVar[str] = (
+        ""  # one-line shape of `data` for plan references, e.g. 'matches[{path,name}], scanned'
+    )
 
     @classmethod
     def spec(cls) -> ToolSpec:
@@ -50,6 +54,7 @@ class Tool(ABC, Generic[InT]):
             description=cls.description,
             input_schema=cls.Input.model_json_schema(),
             output_schema=cls.output_schema,
+            returns=cls.returns,
             capability=cls.capability,
             risk=cls.risk,
             approval=cls.approval,
@@ -61,6 +66,7 @@ class Tool(ABC, Generic[InT]):
             returns_external_content=cls.returns_external_content,
             read_only=cls.read_only,
             cacheable=cls.cacheable,
+            establishes_state=cls.establishes_state,
             cache_ttl_s=cls.cache_ttl_s,
         )
 

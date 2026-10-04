@@ -30,7 +30,7 @@ ROOT = Path(__file__).resolve().parents[2]
 CATALOG = ROOT / "docs" / "tools" / "catalog.md"
 OPENAPI = ROOT / "docs" / "api" / "openapi.json"
 
-CAPABILITY_ORDER = ["filesystem", "terminal", "browser", "desktop", "vision", "verification"]
+CAPABILITY_ORDER = ["filesystem", "terminal", "browser", "api", "desktop", "vision", "verification"]
 
 
 def _type(schema: dict[str, Any]) -> str:

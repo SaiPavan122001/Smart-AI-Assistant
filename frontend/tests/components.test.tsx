@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -127,6 +127,20 @@ describe("TaskInput", () => {
     await waitFor(() => expect(screen.getByLabelText(/what should i do/i)).toHaveValue(""));
     await userEvent.type(screen.getByLabelText(/what should i do/i), "second{Control>}{Enter}{/Control}");
     await waitFor(() => expect(onSubmit).toHaveBeenLastCalledWith("second"));
+  });
+
+  it("starts exactly ONE task when submitted twice in the same tick (execution-loop regression)", async () => {
+    let release: () => void = () => {};
+    const onSubmit = vi.fn().mockImplementation(() => new Promise<void>((r) => (release = r)));
+    render(<TaskInput onSubmit={onSubmit} />);
+    const box = screen.getByLabelText(/what should i do/i);
+    await userEvent.type(box, "open notepad");
+    const form = screen.getByRole("form", { name: "New task" });
+    fireEvent.submit(form);
+    fireEvent.submit(form); // double click / double Ctrl+Enter before React re-renders
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    release();
+    await waitFor(() => expect(box).toHaveValue(""));
   });
 
   it("keeps the text when starting fails so the user does not lose it", async () => {

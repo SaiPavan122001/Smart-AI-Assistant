@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import platform
+import re
 import shutil
 from datetime import datetime
 from typing import Any
@@ -42,7 +43,7 @@ result is right, how to fix an error, summarising a document). An adaptive step 
 `allowed_tools` list.
 3. Element refs are dynamic. For browser/desktop targets give a `query` (and `role`), never a guessed `ref`.
 4. Later steps can use earlier outputs: "{{steps.s2.data.path}}", "{{steps.s2.artifacts.path}}", \
-"{{steps.s3.data.stdout}}". A step may only reference steps listed in its depends_on (or earlier steps).
+"{{steps.s3.data.stdout}}", list sizes as "{{steps.s2.data.matches.length}}". Only use the output fields listed after "-> data:" for each tool (do not invent field names). A step may only reference steps listed in its depends_on (or earlier steps).
 5. Paths: use the aliases @Desktop, @Downloads, @Documents, @Workspace (e.g. "@Desktop/Spring Docs/guide.pdf"), \
 or paths below the workspace. Everything else is blocked.
 6. Prefer direct URLs/APIs over clicking through a UI when you can (browser_download with `url`).
@@ -52,6 +53,10 @@ request is satisfied (e.g. file_exists + file_moved). Never claim success you ca
 9. If the request is unsafe, impossible with the available tools, or too ambiguous to act on, return NO steps and \
 set `needs_clarification` to a specific question.
 10. At most 25 steps. Do not add steps that were not asked for.
+11a. When the user wants INFORMATION back ("tell me ...", "what is ...", "find out ..."), set `answer_template` to the \
+sentence to show, filled from tool outputs, e.g. "The page title is {{steps.s2.data.title}}". Use only fields \
+listed after "-> data:". Never put guesses or facts you did not get from a tool into it.
+11. To look something up on the web, plan `web_search` (structured results, cannot be blocked) and then open the chosen result with browser_open. Use a search engine's page in the browser only when the user explicitly asks to operate that site. If a page reports `blocked_by_site` (bot check / CAPTCHA) NEVER try to solve or get around it: plan `web_search` instead, or tell the user. Check a page TITLE with `browser_title`, not `browser_text`.
 
 ## Verification kinds (for `verify` and `success_criteria`; params in braces)
 {verify_catalog}
@@ -59,7 +64,7 @@ Add "wait_s": N inside params to poll up to N seconds (e.g. for downloads).
 Use {"kind":"value_check","params":{"actual":"{{steps.s3.data.exit_code}}","op":"equals","expected":0}} to check recorded outputs.
 
 ## Output
-Return JSON matching the schema: summary, assumptions, steps[], success_criteria[], needs_clarification.
+Return JSON matching the schema: summary, assumptions, steps[], success_criteria[], needs_clarification, answer_template.
 Step fields: id ("s1".."sN"), title, kind ("tool"|"adaptive"), tool, args, goal, allowed_tools, depends_on, \
 rationale, verify[{kind, params, description}], optional.
 """
@@ -75,7 +80,7 @@ VERIFY_DOCS = {
     "download_complete": "{path, min_bytes?, max_bytes?}",
     "browser_url": "{contains | equals | regex}",
     "browser_title": "{contains | equals}",
-    "browser_text": "{contains, selector?}",
+    "browser_text": "{contains, selector?} (visible page text; without a selector the page TITLE also counts. To check a title use browser_title)",
     "browser_element": "{query, role?, present?: bool}",
     "window_exists": "{title_contains?, process?, present?: bool}",
     "element_state": "{window_title?, query?, role?, automation_id?, expect: {exists?, enabled?, value_contains?}}",
@@ -99,6 +104,14 @@ def _type_of(schema: dict[str, Any]) -> str:
     t = schema.get("type", "any")
     if t == "array":
         return f"[{_type_of(schema.get('items', {}))}]"
+    pattern = schema.get("pattern", "")
+    m = re.fullmatch(
+        r"\^\(([\w|\-]+)\)\$", pattern
+    )  # '^(text|aria)$' -> text|aria: the model must see the legal values
+    if t == "string" and m:
+        return m.group(1)
+    if t in ("integer", "number") and ("minimum" in schema or "maximum" in schema):
+        return f"{t}[{schema.get('minimum', '')}..{schema.get('maximum', '')}]"
     return str(t)
 
 
@@ -113,8 +126,9 @@ def tool_catalog(registry: ToolRegistry, allowed: list[str] | None = None) -> st
         params = ", ".join(
             f"{k}{'*' if k in required else ''}:{_type_of(v)}" for k, v in props.items()
         )
+        out = f" -> data: {spec.returns}" if spec.returns else ""
         lines.append(
-            f"- {spec.name}({params}) [{spec.capability.value}, base risk {spec.risk.label}] {spec.description}"
+            f"- {spec.name}({params}) [{spec.capability.value}, base risk {spec.risk.label}] {spec.description}{out}"
         )
     return "\n".join(lines)
 
@@ -164,6 +178,7 @@ ADAPTIVE_SYSTEM = (
 - Pursue only the step goal. Do not add unrelated actions.
 - Prefer structured tools (find/read/list) over screenshots. Use vision only if structure is unavailable.
 - Use the cheapest tool that answers the question; read narrowly (targeted find, not whole pages).
+- If a tool reports `blocked_by_site` (bot check / CAPTCHA), do not retry that page or try to solve it: use `web_search` or finish_step with success=false and say so.
 - If a tool returns an error, read it, change your approach (different target, different tool, fix the cause). \
 Do not repeat an identical failing call. If an action was DENIED by the user or policy, do not attempt it again.
 - When finished, or when the goal cannot be achieved safely, call `finish_step` exactly once with an honest \

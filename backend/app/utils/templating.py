@@ -21,7 +21,11 @@ class TemplateError(ValueError):
 def _lookup(path: str, scope: dict[str, Any]) -> Any:
     cur: Any = scope
     for part in re.findall(r"[^.\[\]]+", path):
-        if isinstance(cur, dict):
+        if (part == "length" and isinstance(cur, list | str)) or (
+            part == "length" and isinstance(cur, dict) and "length" not in cur
+        ):
+            cur = len(cur)
+        elif isinstance(cur, dict):
             if part not in cur:
                 raise TemplateError(f"reference '{{{{{path}}}}}' not found (missing '{part}')")
             cur = cur[part]

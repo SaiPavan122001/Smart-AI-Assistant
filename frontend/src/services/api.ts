@@ -41,10 +41,14 @@ export function onUnauthorized(fn: Listener): () => void {
 
 const BASE = "/api/v1";
 
-async function request<T>(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
+export const newIdempotencyKey = (): string =>
+  typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+async function request<T>(method: string, path: string, body?: unknown, signal?: AbortSignal, extraHeaders?: Record<string, string>): Promise<T> {
   const headers: Record<string, string> = {
     Authorization: `Bearer ${getToken()}`,
     "X-Session-Id": getSessionId(),
+    ...extraHeaders,
   };
   if (body !== undefined) headers["Content-Type"] = "application/json";
   let res: Response;
@@ -84,7 +88,9 @@ const q = (params: Record<string, string | number | boolean | undefined>): strin
 export const api = {
   health: () => request<{ status: string; version: string }>("GET", "/health"),
   ready: () => request<{ ready: boolean; checks: Record<string, unknown> }>("GET", "/ready"),
-  createTask: (instruction: string) => request<TaskSummary>("POST", "/tasks", { instruction }),
+  // The key makes a repeated delivery of the same click/request start ONE task, never two.
+  createTask: (instruction: string, idempotencyKey: string = newIdempotencyKey()) =>
+    request<TaskSummary>("POST", "/tasks", { instruction }, undefined, { "Idempotency-Key": idempotencyKey }),
   listTasks: (p: { limit?: number; offset?: number; status?: TaskStatus } = {}) =>
     request<TaskList>("GET", `/tasks${q(p)}`),
   getTask: (id: string) => request<Task>("GET", `/tasks/${id}`),

@@ -15,9 +15,11 @@ from app.perception.cache import ObservationCache
 from app.permissions.engine import TaskGrants
 from app.security.injection import InjectionGuard
 from app.security.paths import PathPolicy
+from app.tools.loop_guard import LoopGuard
 from app.utils.control import CancelToken, PauseGate
 
 if TYPE_CHECKING:
+    from app.search.router import SearchRouter
     from app.tools.browser.manager import BrowserManager
     from app.tools.desktop.service import DesktopService
     from app.tools.vision.service import VisionService
@@ -33,6 +35,7 @@ class ToolServices:
     browser: BrowserManager | None = None
     desktop: DesktopService | None = None
     vision: VisionService | None = None
+    search: SearchRouter | None = None
 
 
 Emit = Callable[..., Awaitable[None]]
@@ -59,6 +62,9 @@ class ExecutionContext:
     tool_call_id: str | None = None
     rationale: str = ""
     denied: set[str] = field(default_factory=set)  # call keys the user refused: never re-asked
+    loop_guard: LoopGuard = field(
+        default_factory=LoopGuard
+    )  # per-task action ledger + loop detection
     extras: dict[str, Any] = field(default_factory=dict)
 
     @property

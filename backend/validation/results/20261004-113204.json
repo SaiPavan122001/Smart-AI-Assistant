@@ -1,0 +1,169 @@
+[
+  {
+    "id": "G",
+    "title": "Organize Java PDFs",
+    "instruction": "In the folder C:\\Users\\Pavan\\SmartAIAssistant\\validation\\org find the Java PDFs and move them into a Java folder.",
+    "status": "FAILED",
+    "expected_status": "COMPLETED",
+    "status_ok": false,
+    "verified": false,
+    "summary": "Failed: 1/5 steps succeeded.\nReason: step s7 'Search for Java-related PDF files in org folder' failed: could not resolve verification: reference '{{steps.s7.data.results.length}}' not found (missing 'results'); verification 'files_exist' failed: missing: {, {, s, t, e, p, s, s, 7, d, a, t, a, r, e, s, u, l, t, s, |, m, a, p, (, a, t, t, r, i, b, u, t, e, =, ', n, a, m, e, ', ), }, }\n- Search for Java-related PDF files in org folder: could not resolve verification: reference '{{steps.s7.data.results.length}}' not found (missing 'results')\n5 step(s) were not run.",
+    "answer": null,
+    "error": "step s7 'Search for Java-related PDF files in org folder' failed: could not resolve verification: reference '{{steps.s7.data.results.length}}' not found (missing 'results'); verification 'files_exist' failed: missing: {, {, s, t, e, p, s, s, 7, d, a, t, a, r, e, s, u, l, t, s, |, m, a, p, (, a, t, t, r, i, b, u, t, e, =, ', n, a, m, e, ', ), }, }",
+    "llm_calls": 12,
+    "llm_budget": 10,
+    "llm_ok": false,
+    "vision_calls": 0,
+    "tool_calls": 10,
+    "tools": [
+      [
+        "fs_search",
+        "ok"
+      ],
+      [
+        "fs_search",
+        "ok"
+      ],
+      [
+        "fs_search",
+        "ok"
+      ],
+      [
+        "fs_search",
+        "ok"
+      ],
+      [
+        "verify_task_result",
+        "ok"
+      ],
+      [
+        "verify_task_result",
+        "ok"
+      ],
+      [
+        "fs_search",
+        "ok"
+      ],
+      [
+        "fs_search",
+        "ok"
+      ],
+      [
+        "verify_task_result",
+        "ok"
+      ],
+      [
+        "fs_create",
+        "ok"
+      ]
+    ],
+    "duration_s": 30.9,
+    "recoveries": 5,
+    "recovery_events": [
+      "adaptive_fallback",
+      "replan",
+      "adaptive_fallback",
+      "replan",
+      "adaptive_fallback"
+    ],
+    "input_tokens": 55182,
+    "output_tokens": 3117,
+    "llm_latency_ms": 30063,
+    "cost_usd": 0.1353,
+    "approvals": [],
+    "injection_events": 0,
+    "event_types": [
+      "action_completed",
+      "action_started",
+      "observation_received",
+      "plan_created",
+      "plan_revised",
+      "planning_started",
+      "recovery_completed",
+      "recovery_started",
+      "status_changed",
+      "step_completed",
+      "step_failed",
+      "step_started",
+      "task_created",
+      "task_failed",
+      "tool_selected",
+      "usage_updated",
+      "verification_completed",
+      "verification_started"
+    ],
+    "plan_steps": [
+      [
+        "s1",
+        "tool",
+        "fs_search",
+        "FAILED",
+        "Failed: could not resolve verification: reference '{{steps.s1.data.results.length}}' not found (missing 'results')"
+      ],
+      [
+        "s2",
+        "tool",
+        "fs_create",
+        "SKIPPED",
+        "Superseded by a revised plan"
+      ],
+      [
+        "s3",
+        "adaptive",
+        null,
+        "SKIPPED",
+        "Superseded by a revised plan"
+      ],
+      [
+        "s4",
+        "tool",
+        "fs_search",
+        "FAILED",
+        "Failed: could not resolve verification: reference '{{steps.s4.data.results.length}}' not found (missing 'results')"
+      ],
+      [
+        "s5",
+        "tool",
+        "fs_create",
+        "SKIPPED",
+        "Superseded by a revised plan"
+      ],
+      [
+        "s6",
+        "adaptive",
+        null,
+        "SKIPPED",
+        "Superseded by a revised plan"
+      ],
+      [
+        "s7",
+        "tool",
+        "fs_search",
+        "FAILED",
+        "Failed: could not resolve verification: reference '{{steps.s7.data.results.length}}' not found (missing 'results')"
+      ],
+      [
+        "s8",
+        "tool",
+        "fs_create",
+        "SUCCEEDED",
+        "Created folder: C:\\Users\\Pavan\\SmartAIAssistant\\validation\\org\\Java"
+      ],
+      [
+        "s9",
+        "adaptive",
+        null,
+        "SKIPPED",
+        "Skipped: depends on s7 which did not complete"
+      ]
+    ],
+    "world_ok": false,
+    "listing": [
+      "Java",
+      "java1.pdf",
+      "java2.pdf",
+      "notes.txt",
+      "python1.pdf"
+    ]
+  }
+]

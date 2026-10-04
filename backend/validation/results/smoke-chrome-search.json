@@ -1,0 +1,110 @@
+{
+  "task_id": "task_2caa6cac341f465e",
+  "status": "FAILED",
+  "instruction": "Open Chrome and search for Java Spring Boot official documentation.",
+  "summary": "Failed: 1/6 steps succeeded.\nReason: step s6 'Find the search input box on Google homepage' failed: element 'search input' is absent; verification 'browser_text' failed: page text does not contain 'Spring Boot'\n- Find the search input box on Google homepage: element 'search input' is absent\n4 step(s) were not run.",
+  "answer": null,
+  "verified": false,
+  "error": "verification_failed: step s6 'Find the search input box on Google homepage' failed: element 'search input' is absent; verification 'browser_text' failed: page text does not contain 'Spring Boot'",
+  "llm_calls": 6,
+  "vision_calls": 0,
+  "tool_calls": 9,
+  "executed_tool_calls": 9,
+  "replayed_calls": 0,
+  "replans": 2,
+  "recoveries": 7,
+  "recovery_events": [
+    "refresh_state_retry",
+    "replan",
+    "refresh_state_retry",
+    "alternative_target",
+    "replan",
+    "refresh_state_retry",
+    "alternative_target"
+  ],
+  "launch_tool_calls": 1,
+  "approvals": 0,
+  "loop_guard_triggered": false,
+  "identical_side_effect_repeats": {},
+  "tools": [
+    [
+      "browser_open",
+      "ok",
+      "allow"
+    ],
+    [
+      "browser_find",
+      "ok",
+      "allow"
+    ],
+    [
+      "browser_type",
+      "ok",
+      "allow"
+    ],
+    [
+      "browser_find",
+      "element_not_found",
+      "allow"
+    ],
+    [
+      "browser_find",
+      "element_not_found",
+      "allow"
+    ],
+    [
+      "browser_find",
+      "ok",
+      "allow"
+    ],
+    [
+      "browser_find",
+      "element_not_found",
+      "allow"
+    ],
+    [
+      "browser_find",
+      "element_not_found",
+      "allow"
+    ],
+    [
+      "browser_find",
+      "ok",
+      "allow"
+    ]
+  ],
+  "task_executions_in_db": 2,
+  "duration_s": 34.8,
+  "cost_usd": 0.0485,
+  "model": "openrouter/openai/gpt-4.1",
+  "wall_s": 38.9,
+  "approvals_asked": [],
+  "window_events": [
+    {
+      "t": 7.3,
+      "ev": "OPEN",
+      "hwnd": 2886438,
+      "proc": "chrome.exe",
+      "title": "Untitled - Google Chrome"
+    },
+    {
+      "t": 38.8,
+      "ev": "CLOSE",
+      "hwnd": 2886438,
+      "proc": "chrome.exe",
+      "title": "https://www.google.com/search?q=Java+Spring+Boot+o"
+    }
+  ],
+  "real_opens": {
+    "calc.exe": 0,
+    "calculatorapp.exe": 0,
+    "chrome.exe": 1,
+    "notepad.exe": 0
+  },
+  "real_closes": {
+    "calc.exe": 0,
+    "calculatorapp.exe": 0,
+    "chrome.exe": 1,
+    "notepad.exe": 0
+  }
+}

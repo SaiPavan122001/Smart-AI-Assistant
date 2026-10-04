@@ -1,4 +1,4 @@
-import { useState, type FormEvent, type KeyboardEvent } from "react";
+import { useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 
 const EXAMPLES = [
   "Open my Downloads folder, find Java-related PDFs, create a Java folder and organize them",
@@ -14,11 +14,14 @@ interface Props {
 export function TaskInput({ onSubmit, disabled }: Props) {
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
+  // A ref (not state): two events in the same tick must not both pass the guard.
+  const inFlight = useRef(false);
 
   const submit = async (e?: FormEvent) => {
     e?.preventDefault();
     const value = text.trim();
-    if (!value || busy) return;
+    if (!value || inFlight.current) return;
+    inFlight.current = true;
     setBusy(true);
     try {
       await onSubmit(value);
@@ -26,6 +29,7 @@ export function TaskInput({ onSubmit, disabled }: Props) {
     } catch {
       /* the parent shows the error; keep the text so the user does not lose it */
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   };

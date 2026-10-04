@@ -196,3 +196,90 @@ def test_templates_cannot_escape_the_step_scope() -> None:
         resolve("{{env.SECRET}}", {"steps": {}})
     with pytest.raises(TemplateError):
         resolve("{{__class__.__mro__}}", {"steps": {}})
+
+
+async def test_replan_prompt_names_free_ids_and_repair_repeats_them(env: Env) -> None:
+    """Regression (live run G/C): replans reused 's2'/'s3'. The model is now told the exact next free ids."""
+    done = plan(
+        tool_step("s1", "fs_list", {"path": "@Desktop"}),
+        tool_step("s2", "fs_list", {"path": "@Desktop"}),
+        tool_step("s3", "fs_list", {"path": "@Desktop"}),
+    )
+    clash = {
+        "summary": "x",
+        "steps": [{"id": "s2", "title": "t", "tool": "fs_list", "args": {"path": "@Desktop"}}],
+    }
+    ok = {
+        "summary": "x",
+        "steps": [{"id": "s4", "title": "t", "tool": "fs_list", "args": {"path": "@Desktop"}}],
+    }
+    llm = ScriptedProvider([structured(clash), structured(ok)])
+    out = await Planner(LLMGateway(llm), env.router.registry, env.services).replan(
+        "t1", "x", done, failure="boom", state_summary="", meter=UsageMeter(env.settings.limits), token=CancelToken()
+    )  # fmt: skip
+    first = llm.requests[0].messages[0].content[0].text  # type: ignore[union-attr]
+    assert "existing_step_ids: ['s1', 's2', 's3']" in first and "Use ids s4, s5" in first
+    repair = llm.requests[1].messages[-1].content[0].text  # type: ignore[union-attr]
+    assert "must not be reused" in repair and "Use ids s4" in repair
+    assert out.plan is not None and out.plan.steps[0].id == "s4"
+
+
+def test_templates_support_length_and_catalog_documents_output_shapes(env: Env) -> None:
+    """Regression (live run G): the model invented '{{steps.s1.data.results.length}}' because it was never told fs_search's output."""
+    scope = {
+        "steps": {"s1": {"data": {"matches": [{"path": "a"}, {"path": "b"}], "text": "hello"}}}
+    }
+    assert resolve("{{steps.s1.data.matches.length}}", scope) == 2
+    assert resolve("{{steps.s1.data.text.length}}", scope) == 5
+    assert resolve("{{steps.s1.data.matches[1].path}}", scope) == "b"
+    with pytest.raises(TemplateError):
+        resolve(
+            "{{steps.s1.data.results.length}}", scope
+        )  # a wrong field is still an error, not silently 0
+    cat = tool_catalog(env.router.registry)
+    assert "-> data: matches[" in cat and "fs_search" in cat
+
+
+def test_adaptive_steps_see_fenced_data_of_earlier_steps() -> None:
+    """Regression (live run G): the adaptive loop only saw a 160-char summary and guessed the file paths."""
+    from types import SimpleNamespace
+
+    from app.agent.executor import StepExecutor
+
+    rs = SimpleNamespace(
+        step_data={
+            "s1": {
+                "ok": True,
+                "summary": "2 match(es)",
+                "data": {"matches": [{"path": r"C:\org\java1.pdf"}]},
+            },
+            "s2": {"ok": False, "summary": "failed", "data": {"x": 1}},
+            "s3": {"ok": True, "summary": "no data", "data": {}},
+        }
+    )
+    text = StepExecutor._progress_context(rs)  # type: ignore[arg-type]
+    assert (
+        "java1.pdf" in text
+        and "untrusted" in text.lower()
+        and "s2" not in text.split("earlier_step_outputs")[0].replace("s2.", "")
+    )
+    assert len(text) < 5000
+    assert StepExecutor._progress_context(SimpleNamespace(step_data={})) == "(no earlier steps)"  # type: ignore[arg-type]
+
+
+def test_catalog_shows_legal_values_and_ranges_so_replans_stop_emitting_invalid_args(
+    env: Env,
+) -> None:
+    """Regression (live Test 3): the replanner sent browser_read mode='title' and max_chars<200 twice -> plan_invalid."""
+    cat = tool_catalog(env.router.registry)
+    line = (
+        next(ln for ln in cat.splitlines() if ln.startswith("- browser_read("))
+        if "browser_read" in cat
+        else ""
+    )
+    if line:
+        assert (
+            "mode:text|aria|elements|links|forms" in line
+            and "max_chars:integer[200..40000]" in line
+        )
+    assert "max_results:integer[1..200]" in cat  # fs_search: numeric bounds are visible too

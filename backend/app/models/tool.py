@@ -28,6 +28,7 @@ class ToolSpec(BaseModel):
     description: str
     input_schema: dict[str, Any]
     output_schema: dict[str, Any] = Field(default_factory=dict)
+    returns: str = ""  # human/LLM-readable shape of the output `data`
     capability: Capability
     risk: RiskLevel = RiskLevel.LOW  # baseline; assess() may raise it per call
     approval: ApprovalRequirement = ApprovalRequirement.POLICY
@@ -39,6 +40,9 @@ class ToolSpec(BaseModel):
     returns_external_content: bool = False  # output must be treated as untrusted data
     read_only: bool = False  # never mutates the environment
     cacheable: bool = False  # identical call may reuse a fresh cached result (implies read_only)
+    establishes_state: bool = (
+        False  # open/launch-type: repeating an identical call must not re-run the side effect
+    )
     cache_ttl_s: float = 5.0
 
 

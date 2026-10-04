@@ -50,7 +50,7 @@ class RecoveryDecision:
 # Errors where retrying or re-planning can never help (a human decision or a hard limit ended it).
 TERMINAL_CODES = {
     ErrorCode.APPROVAL_DENIED, ErrorCode.APPROVAL_TIMEOUT, ErrorCode.INJECTION_BLOCKED, ErrorCode.CANCELLED,
-    ErrorCode.KILL_SWITCH, ErrorCode.LIMIT_EXCEEDED, ErrorCode.NOT_AVAILABLE, ErrorCode.UNKNOWN_TOOL,
+    ErrorCode.KILL_SWITCH, ErrorCode.LIMIT_EXCEEDED, ErrorCode.LOOP_DETECTED, ErrorCode.NOT_AVAILABLE, ErrorCode.UNKNOWN_TOOL,
 }  # fmt: skip
 # Policy blocks: a compliant alternative may exist, but only one re-plan is worth trying.
 POLICY_CODES = {
@@ -84,6 +84,9 @@ _SEQUENCES: dict[ErrorCode, list[Strategy]] = {
     ErrorCode.LOW_CONFIDENCE: [Strategy.ADAPTIVE],
     ErrorCode.VERIFICATION_FAILED: [Strategy.REFRESH_RETRY, Strategy.ADAPTIVE, Strategy.REPLAN],
     ErrorCode.PLAN_INVALID: [Strategy.REPLAN],
+    ErrorCode.BLOCKED_BY_SITE: [
+        Strategy.REPLAN
+    ],  # retrying the same page cannot help; use another source
 }
 _DEFAULT = [Strategy.ADAPTIVE, Strategy.REPLAN]
 
@@ -198,8 +201,9 @@ class RecoveryEngine:
                 f"{step.title}. The planned action ({step.tool}) failed with {code.value}: {message[:300]}. "
                 "Inspect the current state, choose a different way to achieve the same outcome, and perform it."
                 if phase == "action"
-                else f"{step.title}. The action ran but its verification failed: {message[:300]}. "
-                "Inspect the current state and complete or correct the step so the condition holds."
+                else f"{step.title}. The action ALREADY RAN (its side effect happened) but its verification failed: {message[:300]}. "
+                "Do NOT repeat the action (do not launch/open it again). Inspect the current state and only "
+                "complete or correct what is missing so the condition holds."
             )
             return RecoveryDecision(
                 Strategy.ADAPTIVE,

@@ -1,0 +1,74 @@
+[
+  {
+    "id": "A",
+    "title": "Open Chrome",
+    "instruction": "Open Chrome.",
+    "status": "COMPLETED",
+    "expected_status": "COMPLETED",
+    "status_ok": true,
+    "verified": true,
+    "summary": "Completed: 1/2 steps succeeded and the result was verified.",
+    "answer": null,
+    "error": null,
+    "llm_calls": 2,
+    "llm_budget": 3,
+    "llm_ok": true,
+    "vision_calls": 0,
+    "tool_calls": 2,
+    "tools": [
+      [
+        "desktop_launch",
+        "policy_denied"
+      ],
+      [
+        "browser_open",
+        "ok"
+      ]
+    ],
+    "duration_s": 7.5,
+    "recoveries": 1,
+    "recovery_events": [
+      "replan"
+    ],
+    "input_tokens": 7067,
+    "output_tokens": 619,
+    "llm_latency_ms": 5110,
+    "cost_usd": 0.0191,
+    "approvals": [],
+    "injection_events": 0,
+    "event_types": [
+      "action_completed",
+      "action_failed",
+      "action_started",
+      "plan_created",
+      "plan_revised",
+      "planning_started",
+      "recovery_completed",
+      "recovery_started",
+      "status_changed",
+      "step_completed",
+      "step_failed",
+      "step_started",
+      "task_completed",
+      "task_created",
+      "tool_selected",
+      "usage_updated",
+      "verification_completed",
+      "verification_started"
+    ],
+    "plan_steps": [
+      [
+        "s1",
+        "tool",
+        "desktop_launch",
+        "FAILED"
+      ],
+      [
+        "s2",
+        "tool",
+        "browser_open",
+        "SUCCEEDED"
+      ]
+    ]
+  }
+]

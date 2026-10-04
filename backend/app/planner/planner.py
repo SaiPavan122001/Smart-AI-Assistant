@@ -46,6 +46,7 @@ class PlanDraft(BaseModel):
     steps: list[StepDraft] = Field(default_factory=list)
     success_criteria: list[VerificationSpec] = Field(default_factory=list)
     needs_clarification: str | None = None
+    answer_template: str | None = None
 
 
 def validate_plan(
@@ -95,6 +96,9 @@ def validate_plan(
         for ref in referenced_steps(v.params):
             if ref not in seen:
                 problems.append(f"success_criteria references unknown step '{ref}'")
+    for ref in referenced_steps(plan.answer_template or ""):
+        if ref not in seen:
+            problems.append(f"answer_template references unknown step '{ref}'")
     return problems
 
 
@@ -116,11 +120,22 @@ def _validate_args(step: PlanStep, tool: Any) -> list[str]:
     return []
 
 
+def _free_ids(used: set[str], n: int = 6) -> str:
+    """'Use s4, s5, ...' — the next unused ids after the highest numeric one."""
+    nums = [int(i[1:]) for i in used if i[:1] == "s" and i[1:].isdigit()]
+    start = max(nums, default=0) + 1
+    return "Use ids " + ", ".join(f"s{start + k}" for k in range(n)) + " ... in order."
+
+
+def _next_ids(plan: Plan) -> str:
+    return _free_ids({s.id for s in plan.steps})
+
+
 def draft_to_plan(draft: PlanDraft, task_id: str, *, version: int = 1) -> Plan:
     steps = [PlanStep(**s.model_dump()) for s in draft.steps]
     return Plan(
         task_id=task_id, version=version, summary=draft.summary, assumptions=draft.assumptions,
-        steps=steps, success_criteria=draft.success_criteria,
+        steps=steps, success_criteria=draft.success_criteria, answer_template=draft.answer_template,
     )  # fmt: skip
 
 
@@ -147,6 +162,11 @@ class Planner:
         meter: UsageMeter, token: CancelToken,
     ) -> PlanOutcome:  # fmt: skip
         done = [s for s in plan.steps if s.status.value == "SUCCEEDED"]
+        performed = [
+            {"id": s.id, "title": s.title, "tool": s.tool, "args": s.args}
+            for s in plan.steps
+            if s.status.value == "FAILED" and (s.output or {}).get("action_performed")
+        ]
         user = (
             build_planner_user(instruction, self._registry, self._services)
             + "\n\n<replan_context>\n"
@@ -154,9 +174,13 @@ class Planner:
             "Do NOT repeat completed steps; you may reference their outputs as {{steps.<id>.data...}}. "
             "Any action the user denied must not be proposed again.\n"
             f"completed_steps: {json.dumps([{'id': s.id, 'title': s.title, 'summary': s.summary[:200]} for s in done])}\n"
+            "performed_but_unverified: these actions DID run and their effects are real; only their verification "
+            "failed. Do NOT plan them again (never re-open/re-launch); inspect the current state instead: "
+            f"{json.dumps(performed)[:1200]}\n"
             f"problem: {failure[:1500]}\n"
             f"state: {state_summary[:1500]}\n"
-            "Use new step ids that continue after the last existing id.\n</replan_context>"
+            f"existing_step_ids: {sorted(s.id for s in plan.steps)}\n"
+            f"Every new step id MUST be unused. {_next_ids(plan)}\n</replan_context>"
         )
         return await self._plan(
             task_id, user, meter=meter, token=token, purpose="replan", version=plan.version + 1,
@@ -200,6 +224,13 @@ class Planner:
                 Message.user(
                     "The plan failed validation:\n- "
                     + "\n- ".join(problems[:10])
+                    + (
+                        "\nThese ids already exist and must not be reused: "
+                        + ", ".join(sorted(prior))
+                        + f". {_free_ids(prior)}"
+                        if prior and any("duplicate step id" in x for x in problems)
+                        else ""
+                    )
                     + "\nReturn a corrected plan."
                 ),
             ]

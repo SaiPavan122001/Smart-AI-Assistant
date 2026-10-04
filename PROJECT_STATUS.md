@@ -2,6 +2,22 @@
 
 _Last full validation run: 2026-10-04, Windows 11 (10.0.22631), Python 3.12.10, Node 22.18, Chrome/Edge 154, PostgreSQL 16.2 (embedded `pgserver`)._
 
+## P0 execution-loop bug (2026-10-04) — status
+
+**Root-cause defects fixed and deterministic tests pass; real-world computer validation pending.** The agent could repeat side-effecting actions
+(re-launch an app after a verification false-negative, via adaptive fallback or a replan; duplicate tasks from a double submit with 2 concurrent runtimes).
+Added a per-task action ledger with idempotent replay and loop detection (`LOOP_DETECTED`), state-checked launches, idempotent task start and
+`max_concurrent_tasks=1`. The incident itself left no persisted record, so its exact sequence is unproven. Details: [docs/execution-loop-fix.md](docs/execution-loop-fix.md).
+Live validation (`validation.live`) is paused until this is verified manually.
+
+## Live smoke status (2026-10-04, after the loop fix)
+
+Calculator PASS; Chrome navigation PASS (answer "The page title is 'Example Domain'"); Chrome search PASS via the new `web_search` provider; a Google-in-browser
+task hit the bot check, was stopped as `blocked_by_site`, re-planned and completed through `web_search`. No repeated launches, no loop-guard triggers, durable
+SQLite records re-open correctly. Fixes made: `browser_text` also checks the page title; planner catalog now shows legal enum/range values; plans can return
+deterministic answers (`answer_template`); SearchRouter + blocked-page detection ([docs/web-search.md](docs/web-search.md)).
+Not yet done: the broader single-user validation (scenarios A-M2) and the final classification. DuckDuckGo is best-effort; add a Brave/Tavily key for reliability.
+
 ## Verdict
 
 **Feature-complete and engineering-ready; not yet validated against a live LLM.** Everything that can be verified without an API key has been

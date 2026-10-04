@@ -1,0 +1,882 @@
+[
+  {
+    "id": "B",
+    "title": "Search Java Spring Boot",
+    "instruction": "Open Chrome and search for Java Spring Boot.",
+    "status": "FAILED",
+    "expected_status": "COMPLETED",
+    "status_ok": false,
+    "verified": false,
+    "summary": "Failed: 5/7 steps succeeded.\nReason: step s4 'Type 'Java Spring Boot' into the search box and submit' failed: The attempt to type 'Java Spring Boot' into the search box and submit failed because Google redirected to a reCAPTCHA verification page, preventing further interaction\n- Type 'Java Spring Boot' into the search box and submit: The attempt to type 'Java Spring Boot' into the search box and submit failed because Google redirected to a reCAPTCHA verification page, preventing further inte\nAnswer: The search for 'Java Spring Boot' was submitted on Bing.",
+    "answer": "The search for 'Java Spring Boot' was submitted on Bing.",
+    "error": "step s4 'Type 'Java Spring Boot' into the search box and submit' failed: The attempt to type 'Java Spring Boot' into the search box and submit failed because Google redirected to a reCAPTCHA verification page, preventing further interaction",
+    "llm_calls": 10,
+    "llm_budget": 4,
+    "llm_ok": false,
+    "vision_calls": 0,
+    "tool_calls": 11,
+    "tools": [
+      [
+        "browser_open",
+        "ok"
+      ],
+      [
+        "browser_find",
+        "ok"
+      ],
+      [
+        "browser_type",
+        "ok"
+      ],
+      [
+        "browser_type",
+        "stale_reference"
+      ],
+      [
+        "browser_type",
+        "stale_reference"
+      ],
+      [
+        "browser_type",
+        "stale_reference"
+      ],
+      [
+        "browser_find",
+        "element_not_found"
+      ],
+      [
+        "browser_read",
+        "ok"
+      ],
+      [
+        "browser_navigate",
+        "ok"
+      ],
+      [
+        "browser_find",
+        "ok"
+      ],
+      [
+        "browser_type",
+        "ok"
+      ]
+    ],
+    "duration_s": 38.1,
+    "recoveries": 5,
+    "recovery_events": [
+      "adaptive_fallback",
+      "replan",
+      "refresh_state_retry",
+      "refresh_state_retry",
+      "adaptive_fallback"
+    ],
+    "input_tokens": 38107,
+    "output_tokens": 2169,
+    "llm_latency_ms": 19214,
+    "cost_usd": 0.0936,
+    "approvals": [],
+    "injection_events": 0,
+    "event_types": [
+      "action_completed",
+      "action_failed",
+      "action_started",
+      "observation_received",
+      "plan_created",
+      "plan_revised",
+      "planning_started",
+      "recovery_completed",
+      "recovery_started",
+      "status_changed",
+      "step_completed",
+      "step_failed",
+      "step_started",
+      "task_created",
+      "task_failed",
+      "tool_selected",
+      "usage_updated",
+      "verification_completed",
+      "verification_started"
+    ],
+    "plan_steps": [
+      [
+        "s1",
+        "tool",
+        "browser_open",
+        "SUCCEEDED"
+      ],
+      [
+        "s2",
+        "tool",
+        "browser_find",
+        "SUCCEEDED"
+      ],
+      [
+        "s3",
+        "tool",
+        "browser_type",
+        "FAILED"
+      ],
+      [
+        "s4",
+        "tool",
+        "browser_type",
+        "FAILED"
+      ],
+      [
+        "s5",
+        "tool",
+        "browser_navigate",
+        "SUCCEEDED"
+      ],
+      [
+        "s6",
+        "tool",
+        "browser_find",
+        "SUCCEEDED"
+      ],
+      [
+        "s7",
+        "adaptive",
+        null,
+        "SUCCEEDED"
+      ]
+    ]
+  },
+  {
+    "id": "C",
+    "title": "Notepad text",
+    "instruction": "Open Notepad and type: Hello from my AI assistant.",
+    "status": "FAILED",
+    "expected_status": "COMPLETED",
+    "status_ok": false,
+    "verified": false,
+    "summary": "Failed: 1/3 steps succeeded.\nReason: The model could not produce a valid plan: duplicate step id 's3'\n- Find Notepad text area: element missing (expected exists=True)\n1 step(s) were not run.",
+    "answer": null,
+    "error": "The model could not produce a valid plan: duplicate step id 's3'",
+    "llm_calls": 6,
+    "llm_budget": 5,
+    "llm_ok": false,
+    "vision_calls": 0,
+    "tool_calls": 6,
+    "tools": [
+      [
+        "desktop_launch",
+        "ok"
+      ],
+      [
+        "desktop_find_element",
+        "element_not_found"
+      ],
+      [
+        "desktop_find_element",
+        "element_not_found"
+      ],
+      [
+        "desktop_find_element",
+        "element_not_found"
+      ],
+      [
+        "desktop_find_element",
+        "ok"
+      ],
+      [
+        "desktop_read",
+        "ok"
+      ]
+    ],
+    "duration_s": 29.1,
+    "recoveries": 3,
+    "recovery_events": [
+      "refresh_state_retry",
+      "alternative_target",
+      "adaptive_fallback"
+    ],
+    "input_tokens": 25819,
+    "output_tokens": 2415,
+    "llm_latency_ms": 16045,
+    "cost_usd": 0.071,
+    "approvals": [],
+    "injection_events": 0,
+    "event_types": [
+      "action_completed",
+      "action_failed",
+      "action_started",
+      "observation_received",
+      "plan_created",
+      "planning_started",
+      "recovery_started",
+      "status_changed",
+      "step_completed",
+      "step_failed",
+      "step_started",
+      "task_created",
+      "task_failed",
+      "tool_selected",
+      "usage_updated",
+      "verification_completed",
+      "verification_started"
+    ],
+    "plan_steps": [
+      [
+        "s1",
+        "tool",
+        "desktop_launch",
+        "SUCCEEDED"
+      ],
+      [
+        "s2",
+        "tool",
+        "desktop_find_element",
+        "FAILED"
+      ],
+      [
+        "s3",
+        "tool",
+        "desktop_type",
+        "SKIPPED"
+      ]
+    ]
+  },
+  {
+    "id": "D",
+    "title": "Calculator 25x16",
+    "instruction": "Open Calculator and calculate 25 multiplied by 16.",
+    "status": "FAILED",
+    "expected_status": "COMPLETED",
+    "status_ok": false,
+    "verified": false,
+    "summary": "Failed: 6/8 steps succeeded.\nReason: Resource limit reached: maximum llm calls (40) for this task\n- Re-enter '25*16=' in Calculator: Resource limit reached: maximum llm calls (40) for this task\nAnswer: The 'Clear' button was clicked and the Calculator display reset to 0.",
+    "answer": "The 'Clear' button was clicked and the Calculator display reset to 0.",
+    "error": "Resource limit reached: maximum llm calls (40) for this task",
+    "llm_calls": 40,
+    "llm_budget": 8,
+    "llm_ok": false,
+    "vision_calls": 0,
+    "tool_calls": 43,
+    "tools": [
+      [
+        "desktop_launch",
+        "ok"
+      ],
+      [
+        "desktop_focus",
+        "ok"
+      ],
+      [
+        "desktop_find_element",
+        "element_not_found"
+      ],
+      [
+        "desktop_find_element",
+        "ok"
+      ],
+      [
+        "desktop_find_element",
+        "element_not_found"
+      ],
+      [
+        "desktop_find_element",
+        "invalid_input"
+      ],
+      [
+        "desktop_find_element",
+        "ok"
+      ],
+      [
+        "desktop_find_element",
+        "element_not_found"
+      ],
+      [
+        "desktop_find_element",
+        "element_not_found"
+      ],
+      [
+        "desktop_find_element",
+        "element_not_found"
+      ],
+      [
+        "desktop_find_element",
+        "element_not_found"
+      ],
+      [
+        "desktop_find_element",
+        "ok"
+      ],
+      [
+        "desktop_read",
+        "ok"
+      ],
+      [
+        "desktop_click",
+        "ok"
+      ],
+      [
+        "desktop_click",
+        "ok"
+      ],
+      [
+        "desktop_click",
+        "ok"
+      ],
+      [
+        "desktop_click",
+        "ok"
+      ],
+      [
+        "desktop_click",
+        "ok"
+      ],
+      [
+        "desktop_click",
+        "ok"
+      ],
+      [
+        "desktop_read",
+        "ok"
+      ],
+      [
+        "desktop_read",
+        "ok"
+      ],
+      [
+        "desktop_read",
+        "ok"
+      ],
+      [
+        "desktop_find_element",
+        "element_not_found"
+      ],
+      [
+        "desktop_find_element",
+        "element_not_found"
+      ],
+      [
+        "desktop_find_element",
+        "element_not_found"
+      ],
+      [
+        "desktop_windows",
+        "ok"
+      ],
+      [
+        "desktop_find_element",
+        "ok"
+      ],
+      [
+        "desktop_click",
+        "ok"
+      ],
+      [
+        "desktop_read",
+        "ok"
+      ],
+      [
+        "desktop_find_element",
+        "ok"
+      ],
+      [
+        "desktop_click",
+        "ok"
+      ],
+      [
+        "desktop_read",
+        "ok"
+      ],
+      [
+        "desktop_find_element",
+        "element_not_found"
+      ],
+      [
+        "desktop_find_element",
+        "ok"
+      ],
+      [
+        "desktop_click",
+        "ok"
+      ],
+      [
+        "desktop_find_element",
+        "ok"
+      ],
+      [
+        "desktop_click",
+        "ok"
+      ],
+      [
+        "desktop_find_element",
+        "ok"
+      ],
+      [
+        "desktop_click",
+        "ok"
+      ],
+      [
+        "desktop_find_element",
+        "ok"
+      ],
+      [
+        "desktop_click",
+        "ok"
+      ],
+      [
+        "desktop_find_element",
+        "ok"
+      ],
+      [
+        "desktop_click",
+        "ok"
+      ]
+    ],
+    "duration_s": 81.0,
+    "recoveries": 8,
+    "recovery_events": [
+      "refresh_state_retry",
+      "adaptive_fallback",
+      "refresh_state_retry",
+      "replan",
+      "refresh_state_retry",
+      "alternative_target",
+      "adaptive_fallback",
+      "adaptive_fallback"
+    ],
+    "input_tokens": 159978,
+    "output_tokens": 5858,
+    "llm_latency_ms": 67860,
+    "cost_usd": 0.3668,
+    "approvals": [],
+    "injection_events": 0,
+    "event_types": [
+      "action_completed",
+      "action_failed",
+      "action_started",
+      "limit_reached",
+      "observation_received",
+      "plan_created",
+      "plan_revised",
+      "planning_started",
+      "recovery_completed",
+      "recovery_started",
+      "status_changed",
+      "step_completed",
+      "step_failed",
+      "step_started",
+      "task_created",
+      "task_failed",
+      "tool_selected",
+      "usage_updated",
+      "verification_completed",
+      "verification_started"
+    ],
+    "plan_steps": [
+      [
+        "s1",
+        "tool",
+        "desktop_launch",
+        "SUCCEEDED"
+      ],
+      [
+        "s2",
+        "tool",
+        "desktop_focus",
+        "SUCCEEDED"
+      ],
+      [
+        "s3",
+        "tool",
+        "desktop_find_element",
+        "SUCCEEDED"
+      ],
+      [
+        "s4",
+        "tool",
+        "desktop_type",
+        "SUCCEEDED"
+      ],
+      [
+        "s5",
+        "adaptive",
+        null,
+        "FAILED"
+      ],
+      [
+        "s6",
+        "tool",
+        "desktop_find_element",
+        "SUCCEEDED"
+      ],
+      [
+        "s7",
+        "tool",
+        "desktop_click",
+        "SUCCEEDED"
+      ],
+      [
+        "s8",
+        "adaptive",
+        null,
+        "FAILED"
+      ]
+    ]
+  },
+  {
+    "id": "E",
+    "title": "Spring Boot docs page title",
+    "instruction": "Open Chrome, search for the Spring Boot documentation, open a relevant official documentation page, and tell me the page title.",
+    "status": "COMPLETED",
+    "expected_status": "COMPLETED",
+    "status_ok": true,
+    "verified": true,
+    "summary": "Completed: 2/3 steps succeeded and the result was verified.\nAnswer: The official Spring Boot documentation page at https://docs.spring.io/spring-boot/documentation.html has been opened.",
+    "answer": "The official Spring Boot documentation page at https://docs.spring.io/spring-boot/documentation.html has been opened.",
+    "error": null,
+    "llm_calls": 17,
+    "llm_budget": 10,
+    "llm_ok": false,
+    "vision_calls": 0,
+    "tool_calls": 13,
+    "tools": [
+      [
+        "browser_open",
+        "ok"
+      ],
+      [
+        "browser_read",
+        "ok"
+      ],
+      [
+        "browser_open",
+        "ok"
+      ],
+      [
+        "browser_find",
+        "ok"
+      ],
+      [
+        "browser_type",
+        "element_not_found"
+      ],
+      [
+        "browser_find",
+        "element_not_found"
+      ],
+      [
+        "browser_read",
+        "ok"
+      ],
+      [
+        "browser_type",
+        "element_not_found"
+      ],
+      [
+        "browser_type",
+        "ok"
+      ],
+      [
+        "verify_browser_state",
+        "ok"
+      ],
+      [
+        "browser_find",
+        "ok"
+      ],
+      [
+        "browser_click",
+        "ok"
+      ],
+      [
+        "browser_read",
+        "ok"
+      ]
+    ],
+    "duration_s": 51.3,
+    "recoveries": 3,
+    "recovery_events": [
+      "refresh_state_retry",
+      "adaptive_fallback",
+      "replan"
+    ],
+    "input_tokens": 81446,
+    "output_tokens": 3093,
+    "llm_latency_ms": 31972,
+    "cost_usd": 0.1876,
+    "approvals": [],
+    "injection_events": 0,
+    "event_types": [
+      "action_completed",
+      "action_failed",
+      "action_started",
+      "observation_received",
+      "plan_created",
+      "plan_revised",
+      "planning_started",
+      "recovery_completed",
+      "recovery_started",
+      "status_changed",
+      "step_completed",
+      "step_failed",
+      "step_started",
+      "task_completed",
+      "task_created",
+      "tool_selected",
+      "usage_updated",
+      "verification_completed",
+      "verification_started"
+    ],
+    "plan_steps": [
+      [
+        "s1",
+        "tool",
+        "browser_open",
+        "FAILED"
+      ],
+      [
+        "s2",
+        "adaptive",
+        null,
+        "SKIPPED"
+      ],
+      [
+        "s3",
+        "adaptive",
+        null,
+        "SKIPPED"
+      ],
+      [
+        "s4",
+        "adaptive",
+        null,
+        "SUCCEEDED"
+      ],
+      [
+        "s5",
+        "tool",
+        "browser_read",
+        "SUCCEEDED"
+      ]
+    ]
+  },
+  {
+    "id": "F",
+    "title": "Download PDF + folder + move",
+    "instruction": "Open Chrome, search for the Spring Boot documentation, download an appropriate PDF if available, create a folder called Spring Docs on my Desktop, move the downloaded PDF there, and verify the final location.",
+    "status": "FAILED",
+    "expected_status": "COMPLETED",
+    "status_ok": false,
+    "verified": false,
+    "summary": "Failed: 1/5 steps succeeded.\nReason: adaptive iteration limit reached\n- Find and navigate to the official Spring Boot documentation page: adaptive iteration limit reached",
+    "answer": null,
+    "error": "adaptive iteration limit reached",
+    "llm_calls": 14,
+    "llm_budget": 14,
+    "llm_ok": true,
+    "vision_calls": 0,
+    "tool_calls": 13,
+    "tools": [
+      [
+        "browser_open",
+        "ok"
+      ],
+      [
+        "browser_find",
+        "element_not_found"
+      ],
+      [
+        "browser_find",
+        "element_not_found"
+      ],
+      [
+        "browser_find",
+        "element_not_found"
+      ],
+      [
+        "browser_find",
+        "element_not_found"
+      ],
+      [
+        "browser_find",
+        "element_not_found"
+      ],
+      [
+        "browser_find",
+        "element_not_found"
+      ],
+      [
+        "browser_find",
+        "element_not_found"
+      ],
+      [
+        "browser_find",
+        "element_not_found"
+      ],
+      [
+        "browser_find",
+        "element_not_found"
+      ],
+      [
+        "browser_find",
+        "element_not_found"
+      ],
+      [
+        "browser_find",
+        "element_not_found"
+      ],
+      [
+        "browser_find",
+        "element_not_found"
+      ]
+    ],
+    "duration_s": 33.8,
+    "recoveries": 0,
+    "recovery_events": [],
+    "input_tokens": 25650,
+    "output_tokens": 2201,
+    "llm_latency_ms": 22964,
+    "cost_usd": 0.0689,
+    "approvals": [],
+    "injection_events": 0,
+    "event_types": [
+      "action_completed",
+      "action_failed",
+      "action_started",
+      "limit_reached",
+      "plan_created",
+      "planning_started",
+      "status_changed",
+      "step_completed",
+      "step_failed",
+      "step_started",
+      "task_created",
+      "task_failed",
+      "tool_selected",
+      "usage_updated",
+      "verification_completed",
+      "verification_started"
+    ],
+    "plan_steps": [
+      [
+        "s1",
+        "tool",
+        "browser_open",
+        "SUCCEEDED"
+      ],
+      [
+        "s2",
+        "adaptive",
+        null,
+        "FAILED"
+      ],
+      [
+        "s3",
+        "adaptive",
+        null,
+        "PENDING"
+      ],
+      [
+        "s4",
+        "tool",
+        "fs_create",
+        "PENDING"
+      ],
+      [
+        "s5",
+        "adaptive",
+        null,
+        "PENDING"
+      ]
+    ],
+    "spring_docs_files": null
+  },
+  {
+    "id": "G",
+    "title": "Organize Java PDFs",
+    "instruction": "In the folder C:\\Users\\Pavan\\SmartAIAssistant\\validation\\org find the Java PDFs and move them into a Java folder.",
+    "status": "FAILED",
+    "expected_status": "COMPLETED",
+    "status_ok": false,
+    "verified": false,
+    "summary": "Failed: 0/3 steps succeeded.\nReason: The model could not produce a valid plan: duplicate step id 's2'",
+    "answer": null,
+    "error": "The model could not produce a valid plan: duplicate step id 's2'",
+    "llm_calls": 7,
+    "llm_budget": 10,
+    "llm_ok": true,
+    "vision_calls": 0,
+    "tool_calls": 5,
+    "tools": [
+      [
+        "fs_search",
+        "ok"
+      ],
+      [
+        "fs_search",
+        "ok"
+      ],
+      [
+        "verify_task_result",
+        "ok"
+      ],
+      [
+        "verify_file_state",
+        "ok"
+      ],
+      [
+        "verify_file_state",
+        "ok"
+      ]
+    ],
+    "duration_s": 17.3,
+    "recoveries": 2,
+    "recovery_events": [
+      "adaptive_fallback",
+      "replan"
+    ],
+    "input_tokens": 31566,
+    "output_tokens": 2489,
+    "llm_latency_ms": 16796,
+    "cost_usd": 0.083,
+    "approvals": [],
+    "injection_events": 0,
+    "event_types": [
+      "action_completed",
+      "action_started",
+      "observation_received",
+      "plan_created",
+      "planning_started",
+      "recovery_completed",
+      "recovery_started",
+      "status_changed",
+      "step_failed",
+      "step_started",
+      "task_created",
+      "task_failed",
+      "tool_selected"
+    ],
+    "plan_steps": [
+      [
+        "s1",
+        "tool",
+        "fs_search",
+        "FAILED"
+      ],
+      [
+        "s2",
+        "tool",
+        "fs_create",
+        "PENDING"
+      ],
+      [
+        "s3",
+        "adaptive",
+        null,
+        "PENDING"
+      ]
+    ],
+    "world_ok": false,
+    "listing": [
+      "java1.pdf",
+      "java2.pdf",
+      "notes.txt",
+      "python1.pdf"
+    ]
+  }
+]

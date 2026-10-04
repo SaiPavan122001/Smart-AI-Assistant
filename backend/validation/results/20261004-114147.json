@@ -1,0 +1,282 @@
+[
+  {
+    "id": "C",
+    "title": "Notepad text",
+    "instruction": "Open Notepad and type: Hello from my AI assistant.",
+    "status": "COMPLETED",
+    "expected_status": "COMPLETED",
+    "status_ok": true,
+    "verified": true,
+    "summary": "Completed: 3/4 steps succeeded and the result was verified.",
+    "answer": null,
+    "error": null,
+    "llm_calls": 5,
+    "llm_budget": 5,
+    "llm_ok": true,
+    "vision_calls": 0,
+    "tool_calls": 5,
+    "tools": [
+      [
+        "desktop_launch",
+        "ok"
+      ],
+      [
+        "desktop_find_element",
+        "ok"
+      ],
+      [
+        "desktop_type",
+        "ok"
+      ],
+      [
+        "desktop_read",
+        "ok"
+      ],
+      [
+        "desktop_type",
+        "ok"
+      ]
+    ],
+    "duration_s": 22.0,
+    "recoveries": 2,
+    "recovery_events": [
+      "adaptive_fallback",
+      "replan"
+    ],
+    "input_tokens": 22395,
+    "output_tokens": 1543,
+    "llm_latency_ms": 13905,
+    "cost_usd": 0.0571,
+    "approvals": [],
+    "injection_events": 0,
+    "event_types": [
+      "action_completed",
+      "action_started",
+      "observation_received",
+      "plan_created",
+      "plan_revised",
+      "planning_started",
+      "recovery_completed",
+      "recovery_started",
+      "status_changed",
+      "step_completed",
+      "step_failed",
+      "step_started",
+      "task_completed",
+      "task_created",
+      "tool_selected",
+      "usage_updated",
+      "verification_completed",
+      "verification_started"
+    ],
+    "plan_steps": [
+      [
+        "s1",
+        "tool",
+        "desktop_launch",
+        "SUCCEEDED",
+        "Launched notepad; window 'Notepad' appeared"
+      ],
+      [
+        "s2",
+        "tool",
+        "desktop_find_element",
+        "SUCCEEDED",
+        "document \"Text editor\" ref=u2"
+      ],
+      [
+        "s3",
+        "tool",
+        "desktop_type",
+        "FAILED",
+        "Failed: value does not contain expected text"
+      ],
+      [
+        "s4",
+        "tool",
+        "desktop_type",
+        "SUCCEEDED",
+        "Typed \"Hello from my AI assistant.\" into document \"Text editor\" ref=u2 (keyboard_retry1)"
+      ]
+    ]
+  },
+  {
+    "id": "D",
+    "title": "Calculator 25x16",
+    "instruction": "Open Calculator and calculate 25 multiplied by 16.",
+    "status": "FAILED",
+    "expected_status": "COMPLETED",
+    "status_ok": false,
+    "verified": false,
+    "summary": "Failed: 1/2 steps succeeded.\nReason: adaptive iteration limit reached\n- Find Calculator window and input 25 \u00d7 16: adaptive iteration limit reached",
+    "answer": null,
+    "error": "adaptive iteration limit reached",
+    "llm_calls": 13,
+    "llm_budget": 8,
+    "llm_ok": false,
+    "vision_calls": 0,
+    "tool_calls": 29,
+    "tools": [
+      [
+        "desktop_launch",
+        "ok"
+      ],
+      [
+        "desktop_find_element",
+        "element_not_found"
+      ],
+      [
+        "desktop_find_element",
+        "element_not_found"
+      ],
+      [
+        "desktop_read",
+        "ok"
+      ],
+      [
+        "desktop_find_element",
+        "ok"
+      ],
+      [
+        "desktop_find_element",
+        "ok"
+      ],
+      [
+        "desktop_find_element",
+        "ok"
+      ],
+      [
+        "desktop_find_element",
+        "ok"
+      ],
+      [
+        "desktop_find_element",
+        "ok"
+      ],
+      [
+        "desktop_find_element",
+        "ok"
+      ],
+      [
+        "desktop_focus",
+        "ok"
+      ],
+      [
+        "desktop_read",
+        "invalid_input"
+      ],
+      [
+        "desktop_type",
+        "invalid_input"
+      ],
+      [
+        "desktop_type",
+        "invalid_input"
+      ],
+      [
+        "desktop_read",
+        "ok"
+      ],
+      [
+        "desktop_find_element",
+        "ok"
+      ],
+      [
+        "desktop_find_element",
+        "ok"
+      ],
+      [
+        "desktop_find_element",
+        "ok"
+      ],
+      [
+        "desktop_find_element",
+        "ok"
+      ],
+      [
+        "desktop_find_element",
+        "ok"
+      ],
+      [
+        "desktop_find_element",
+        "ok"
+      ],
+      [
+        "desktop_find_element",
+        "ok"
+      ],
+      [
+        "desktop_find_element",
+        "ok"
+      ],
+      [
+        "desktop_find_element",
+        "ok"
+      ],
+      [
+        "desktop_find_element",
+        "ok"
+      ],
+      [
+        "desktop_find_element",
+        "ok"
+      ],
+      [
+        "desktop_find_element",
+        "ok"
+      ],
+      [
+        "desktop_find_element",
+        "ok"
+      ],
+      [
+        "desktop_find_element",
+        "ok"
+      ]
+    ],
+    "duration_s": 29.2,
+    "recoveries": 0,
+    "recovery_events": [],
+    "input_tokens": 45994,
+    "output_tokens": 2183,
+    "llm_latency_ms": 22664,
+    "cost_usd": 0.1095,
+    "approvals": [],
+    "injection_events": 0,
+    "event_types": [
+      "action_completed",
+      "action_failed",
+      "action_started",
+      "limit_reached",
+      "observation_received",
+      "plan_created",
+      "planning_started",
+      "status_changed",
+      "step_completed",
+      "step_failed",
+      "step_started",
+      "task_created",
+      "task_failed",
+      "tool_selected",
+      "usage_updated",
+      "verification_completed",
+      "verification_started"
+    ],
+    "plan_steps": [
+      [
+        "s1",
+        "tool",
+        "desktop_launch",
+        "SUCCEEDED",
+        "Launched Calculator; window 'Calculator' appeared"
+      ],
+      [
+        "s2",
+        "adaptive",
+        null,
+        "FAILED",
+        "Failed: adaptive iteration limit reached"
+      ]
+    ]
+  }
+]

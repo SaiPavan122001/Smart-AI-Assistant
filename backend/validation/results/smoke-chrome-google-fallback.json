@@ -1,0 +1,85 @@
+{
+  "task_id": "task_76aa7e427bc644ed",
+  "status": "COMPLETED",
+  "instruction": "Open https://www.google.com in Chrome, type Java Spring Boot official documentation into the Google search box and press Enter, then open the official Spring Boot documentation.",
+  "summary": "Completed: 4/5 steps succeeded and the result was verified.\nAnswer: The official Spring Boot documentation URL is https://docs.spring.io/spring-boot/index.html and it has been opened.",
+  "answer": "The official Spring Boot documentation URL is https://docs.spring.io/spring-boot/index.html and it has been opened.",
+  "verified": true,
+  "error": null,
+  "llm_calls": 6,
+  "vision_calls": 0,
+  "tool_calls": 5,
+  "executed_tool_calls": 5,
+  "replayed_calls": 0,
+  "replans": 1,
+  "recoveries": 2,
+  "recovery_events": [
+    "adaptive_fallback",
+    "replan"
+  ],
+  "launch_tool_calls": 2,
+  "approvals": 0,
+  "loop_guard_triggered": false,
+  "identical_side_effect_repeats": {},
+  "tools": [
+    [
+      "browser_open",
+      "ok",
+      "allow"
+    ],
+    [
+      "browser_find",
+      "ok",
+      "allow"
+    ],
+    [
+      "browser_type",
+      "blocked_by_site",
+      "allow"
+    ],
+    [
+      "web_search",
+      "ok",
+      "allow"
+    ],
+    [
+      "browser_open",
+      "ok",
+      "allow"
+    ]
+  ],
+  "task_executions_in_db": 7,
+  "duration_s": 22.9,
+  "cost_usd": 0.0588,
+  "model": "openrouter/openai/gpt-4.1",
+  "wall_s": 28.8,
+  "approvals_asked": [],
+  "window_events": [
+    {
+      "t": 7.4,
+      "ev": "OPEN",
+      "hwnd": 2493380,
+      "proc": "chrome.exe",
+      "title": "Untitled - Google Chrome"
+    },
+    {
+      "t": 28.8,
+      "ev": "CLOSE",
+      "hwnd": 2493380,
+      "proc": "chrome.exe",
+      "title": "Spring Boot :: Spring Boot - Google Chrome"
+    }
+  ],
+  "real_opens": {
+    "calc.exe": 0,
+    "notepad.exe": 0,
+    "chrome.exe": 1,
+    "calculatorapp.exe": 0
+  },
+  "real_closes": {
+    "calc.exe": 0,
+    "notepad.exe": 0,
+    "chrome.exe": 1,
+    "calculatorapp.exe": 0
+  }
+}

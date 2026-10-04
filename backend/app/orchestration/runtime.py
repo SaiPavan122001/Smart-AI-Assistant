@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+from collections import OrderedDict
 
 from app.agent.state import TaskHandle
 from app.models.enums import EventType, TaskStatus
@@ -12,6 +13,7 @@ from app.models.task import Task
 from app.observability.logging import get_logger
 from app.observability.usage import UsageMeter
 from app.orchestration.runner import RunnerDeps, TaskRunner
+from app.tools.loop_guard import LoopGuard
 from app.utils.control import CancelToken, KillSwitch, PauseGate
 from app.utils.errors import AgentError, ErrorCode, NotFoundError
 from app.utils.ids import new_id, utcnow
@@ -29,6 +31,12 @@ class TaskRuntime:
         self._tasks: dict[str, asyncio.Task[None]] = {}
         self._sem = asyncio.Semaphore(max(1, self._settings.limits.max_concurrent_tasks))
         self._closing = False
+        # Idempotent task start: a repeated delivery of the same request must not start a second execution.
+        self._live: dict[str, Task] = {}  # task_id -> task, registered synchronously at submit
+        self._active_by_text: dict[
+            str, str
+        ] = {}  # normalised instruction -> task_id (while not finished)
+        self._by_key: OrderedDict[str, str] = OrderedDict()  # Idempotency-Key -> task_id (bounded)
 
     # ------------------------------------------------------------------ submit
     async def submit(
@@ -38,6 +46,7 @@ class TaskRuntime:
         session_id: str | None = None,
         request_id: str | None = None,
         user_id: str = "local",
+        idempotency_key: str | None = None,
     ) -> Task:
         if self._closing:
             raise AgentError("The service is shutting down", code=ErrorCode.INTERNAL)
@@ -48,19 +57,53 @@ class TaskRuntime:
         instruction = instruction.strip()
         if not instruction:
             raise AgentError("Instruction must not be empty", code=ErrorCode.INVALID_INPUT)
+        # ---- idempotency: decided and registered BEFORE the first await, so concurrent duplicates collapse ----
+        key = (idempotency_key or "").strip()[:128] or None
+        text = " ".join(instruction.split()).lower()
+        known = self._by_key.get(key) if key else None
+        if known is not None:
+            existing = self._live.get(known) or await self.deps.repo.get_task(known)
+            if existing is not None:
+                return existing
+        running = self._live.get(self._active_by_text.get(text, ""))
+        if running is not None and not running.status.is_terminal:
+            return running  # the same request is already executing: never run it twice
         task = Task(
             instruction=instruction,
             session_id=session_id,
             request_id=request_id or new_id("req"),
             user_id=user_id,
         )
+        self._live[task.id] = task
+        self._active_by_text[text] = task.id
+        if key:
+            self._by_key[key] = task.id
+            while len(self._by_key) > 512:
+                self._by_key.popitem(last=False)
+        try:
+            return await self._start(task, session_id)
+        except BaseException:
+            self._forget(task.id)
+            raise
+
+    def _forget(self, task_id: str) -> None:
+        self._live.pop(task_id, None)
+        for k in [k for k, v in self._active_by_text.items() if v == task_id]:
+            del self._active_by_text[k]
+
+    async def _start(self, task: Task, session_id: str | None) -> Task:
         meter = UsageMeter(
             self._settings.limits, metrics=self.deps.metrics,
             price_in_per_mtok=self._settings.llm.price_input_per_mtok, price_out_per_mtok=self._settings.llm.price_output_per_mtok,
         )  # fmt: skip
+        lim = self._settings.limits
         handle = TaskHandle(
-            task_id=task.id, token=CancelToken(self.kill_switch), pause=PauseGate(), meter=meter
-        )
+            task_id=task.id, token=CancelToken(self.kill_switch), pause=PauseGate(), meter=meter,
+            loop_guard=LoopGuard(
+                max_identical=lim.max_identical_actions, max_cycle_repeats=lim.max_cycle_repeats,
+                max_no_progress=lim.max_no_progress,
+            ),
+        )  # fmt: skip
         self._handles[task.id] = handle
         task.usage = meter.usage
         await self.deps.repo.save_task(task)
@@ -87,6 +130,7 @@ class TaskRuntime:
         finally:
             self._handles.pop(task.id, None)
             self._tasks.pop(task.id, None)
+            self._forget(task.id)
 
     async def _cancel_unstarted(self, task: Task, handle: TaskHandle) -> None:
         task.status = TaskStatus.CANCELLED

@@ -71,6 +71,7 @@ class FsListInput(BaseModel):
 
 class FsList(Tool[FsListInput]):
     name = "fs_list"
+    returns = "path, entries[{name,type,size,modified}], truncated"
     description = (
         "List files and folders in an allowed directory (optionally recursive, with glob filter)."
     )
@@ -142,6 +143,7 @@ class FsSearchInput(BaseModel):
 
 class FsSearch(Tool[FsSearchInput]):
     name = "fs_search"
+    returns = "matches[{path,name,type,size}] (use matches.length for the count, matches[0].path), scanned, truncated"
     description = (
         "Search for files by name pattern, extension and/or text content under an allowed folder."
     )
@@ -216,6 +218,7 @@ class FsReadInput(BaseModel):
 
 class FsRead(Tool[FsReadInput]):
     name = "fs_read"
+    returns = "path, text, format, size"
     description = (
         "Read a text file or extract text from a PDF. Content is returned as untrusted data."
     )
@@ -315,6 +318,7 @@ class FsCreateInput(BaseModel):
 
 class FsCreate(Tool[FsCreateInput]):
     name = "fs_create"
+    returns = "path, created, kind"
     description = (
         "Create a folder (kind='dir') or a text file (kind='file', with content) inside an allowed root. "
         "Parent folders are created. Existing files are only replaced when overwrite=true."
@@ -402,6 +406,7 @@ def _same_or_inside(child: Path, parent: Path) -> bool:
 
 class FsMove(Tool[FsMoveInput]):
     name = "fs_move"
+    returns = "src, dst"
     description = "Move or rename a file/folder within allowed roots. Fails if the destination exists unless overwrite=true."
     capability = Capability.FILESYSTEM
     Input = FsMoveInput
@@ -442,6 +447,7 @@ class FsCopyInput(FsMoveInput):
 
 class FsCopy(Tool[FsCopyInput]):
     name = "fs_copy"
+    returns = "src, dst"
     description = "Copy a file/folder within allowed roots. Fails if the destination exists unless overwrite=true."
     capability = Capability.FILESYSTEM
     Input = FsCopyInput
@@ -484,6 +490,7 @@ class FsDeleteInput(BaseModel):
 
 class FsDelete(Tool[FsDeleteInput]):
     name = "fs_delete"
+    returns = "path, recycled"
     description = (
         "Delete a file or folder (moved to the Recycle Bin, recoverable). Always requires approval."
     )

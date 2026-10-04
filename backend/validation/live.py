@@ -166,7 +166,7 @@ async def run_scenario(env: Env, sc: Scenario) -> dict[str, Any]:
         "injection_events": sum(1 for e in events if e.type.value == "injection_detected"),
         "event_types": sorted({e.type.value for e in events}),
         "plan_steps": [
-            (s.id, s.kind.value, s.tool, s.status.value)
+            (s.id, s.kind.value, s.tool, s.status.value, (s.summary or "")[:160])
             for s in (done.plan.steps if done.plan else [])
         ],
         **extra,
