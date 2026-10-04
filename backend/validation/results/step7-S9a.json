@@ -1,0 +1,87 @@
+{
+  "id": "S9a",
+  "title": "Search API success",
+  "instruction": "Search the web for Java Spring Boot official documentation and tell me the URL of the top result.",
+  "status": "COMPLETED",
+  "expected_status": "COMPLETED",
+  "status_ok": true,
+  "verified": true,
+  "summary": "Completed: 1/1 steps succeeded and the result was verified.\nAnswer: The URL of the top result for the Java Spring Boot official documentation is: https://docs.spring.io/spring-boot/index.html",
+  "answer": "The URL of the top result for the Java Spring Boot official documentation is: https://docs.spring.io/spring-boot/index.html",
+  "error": null,
+  "llm_calls": 1,
+  "llm_budget": 6,
+  "llm_ok": true,
+  "vision_calls": 0,
+  "tool_calls": 1,
+  "tools": [
+    [
+      "web_search",
+      "ok"
+    ]
+  ],
+  "duration_s": 4.3,
+  "recoveries": 0,
+  "recovery_events": [],
+  "input_tokens": 4045,
+  "output_tokens": 372,
+  "llm_latency_ms": 2753,
+  "cost_usd": 0.0111,
+  "approvals": [],
+  "injection_events": 0,
+  "event_types": [
+    "action_completed",
+    "action_started",
+    "observation_received",
+    "plan_created",
+    "planning_started",
+    "status_changed",
+    "step_completed",
+    "step_started",
+    "task_completed",
+    "task_created",
+    "tool_selected",
+    "usage_updated",
+    "verification_completed",
+    "verification_started"
+  ],
+  "plan_steps": [
+    [
+      "s1",
+      "tool",
+      "web_search",
+      "SUCCEEDED",
+      "5 result(s) via duckduckgo: 1. Spring Boot :: Spring Boot <https://docs.spring.io/spring-boot/index.html>; 2. Documentation Overview :: Spring Boot <https://doc"
+    ]
+  ],
+  "task_id": "task_6c28d164a41241bd",
+  "model": "openrouter/openai/gpt-4.1",
+  "replans": 0,
+  "launch_tool_calls": 0,
+  "replayed_calls": 0,
+  "loop_guard_triggered": false,
+  "identical_side_effect_repeats": {},
+  "approvals_db": [],
+  "permission_decisions": [
+    {
+      "tool": "web_search",
+      "via": "policy",
+      "action": "allow"
+    }
+  ],
+  "window_events": [],
+  "real_opens": {
+    "chrome.exe": 0,
+    "calculatorapp.exe": 0,
+    "calc.exe": 0,
+    "notepad.exe": 0
+  },
+  "real_closes": {
+    "chrome.exe": 0,
+    "calculatorapp.exe": 0,
+    "calc.exe": 0,
+    "notepad.exe": 0
+  },
+  "vision_calls_db": 0,
+  "wall_s": 6.4
+}

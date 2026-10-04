@@ -1,0 +1,141 @@
+{
+  "id": "S9b",
+  "title": "Search provider unavailable",
+  "instruction": "Search the web for Java Spring Boot official documentation and tell me the URL of the top result.",
+  "status": "FAILED",
+  "expected_status": "FAILED",
+  "status_ok": true,
+  "verified": false,
+  "summary": "Failed: 0/4 steps succeeded.\nReason: step s1 'Search the web for Java Spring Boot official documentation' failed: Web search is unavailable (brave: not_configured: no BRAVE_API_KEY configured). Configure a search API key (BRAVE_API_KEY or TAVILY_API_KEY) or try again later. I ; step s2 'Search the web for Java Spring Boot official documentation' failed: Web search is unavailable (brave: not_configured: no BRAVE_API_KEY configured). Configure a search API key (BRAVE_API_KEY or TAVILY_API_KEY) or try again later. I ; step s3 'Open Google search for Java Spring Boot official documentation' failed",
+  "answer": null,
+  "error": "step s1 'Search the web for Java Spring Boot official documentation' failed: Web search is unavailable (brave: not_configured: no BRAVE_API_KEY configured). Configure a search API key (BRAVE_API_KEY or TAVILY_API_KEY) or try again later. I ; step s2 'Search the web for Java Spring Boot official documentation' failed: Web search is unavailable (brave: not_configured: no BRAVE_API_KEY configured). Configure a search API key (BRAVE_API_KEY or TAVILY_API_KEY) or try again later. I ; step s3 'Open Google search for Java Spring Boot official documentation' failed: The site is showing a bot check (Google bot check (unusual traffic)) at https://www.google.com/sorry/index?continue=https://www.google.com/search%3Fq%3DJava%2B; verification 'value_check' failed: unresolvable reference: reference '{{steps.s4.data.url}}' not found (missing 's4')",
+  "llm_calls": 3,
+  "llm_budget": 8,
+  "llm_ok": true,
+  "vision_calls": 0,
+  "tool_calls": 3,
+  "tools": [
+    [
+      "web_search",
+      "capability_not_available"
+    ],
+    [
+      "web_search",
+      "capability_not_available"
+    ],
+    [
+      "browser_open",
+      "blocked_by_site"
+    ]
+  ],
+  "duration_s": 16.6,
+  "recoveries": 0,
+  "recovery_events": [],
+  "input_tokens": 12747,
+  "output_tokens": 1357,
+  "llm_latency_ms": 7989,
+  "cost_usd": 0.0364,
+  "approvals": [],
+  "injection_events": 0,
+  "event_types": [
+    "action_failed",
+    "action_started",
+    "plan_created",
+    "plan_revised",
+    "planning_started",
+    "status_changed",
+    "step_failed",
+    "step_started",
+    "task_created",
+    "task_failed",
+    "tool_selected",
+    "usage_updated"
+  ],
+  "plan_steps": [
+    [
+      "s1",
+      "tool",
+      "web_search",
+      "FAILED",
+      "Failed: Web search is unavailable (brave: not_configured: no BRAVE_API_KEY configured). Configure a search API key (BRAVE_API_KEY or TAVILY_API_KEY) or try agai"
+    ],
+    [
+      "s2",
+      "tool",
+      "web_search",
+      "FAILED",
+      "Failed: Web search is unavailable (brave: not_configured: no BRAVE_API_KEY configured). Configure a search API key (BRAVE_API_KEY or TAVILY_API_KEY) or try agai"
+    ],
+    [
+      "s3",
+      "tool",
+      "browser_open",
+      "FAILED",
+      "Failed: The site is showing a bot check (Google bot check (unusual traffic)) at https://www.google.com/sorry/index?continue=https://www.google.com/search%3Fq%3D"
+    ],
+    [
+      "s4",
+      "adaptive",
+      null,
+      "SKIPPED",
+      "Skipped: depends on s3 which did not complete"
+    ]
+  ],
+  "task_id": "task_f1577478e0fc48e7",
+  "model": "openrouter/openai/gpt-4.1",
+  "replans": 2,
+  "launch_tool_calls": 1,
+  "replayed_calls": 0,
+  "loop_guard_triggered": false,
+  "identical_side_effect_repeats": {
+    "web_search|{\"max_results\": 5, \"query\": \"Java Spring Boot official documentation\"}": 2
+  },
+  "approvals_db": [],
+  "permission_decisions": [
+    {
+      "tool": "web_search",
+      "via": "policy",
+      "action": "allow"
+    },
+    {
+      "tool": "web_search",
+      "via": "policy",
+      "action": "allow"
+    },
+    {
+      "tool": "browser_open",
+      "via": "policy",
+      "action": "allow"
+    }
+  ],
+  "window_events": [
+    {
+      "t": 10.9,
+      "ev": "OPEN",
+      "hwnd": 10226460,
+      "proc": "chrome.exe",
+      "title": "Untitled - Google Chrome"
+    },
+    {
+      "t": 16.6,
+      "ev": "CLOSE",
+      "hwnd": 10226460,
+      "proc": "chrome.exe",
+      "title": "https://www.google.com/search?q=Java+Spring+Boot+o"
+    }
+  ],
+  "real_opens": {
+    "chrome.exe": 1,
+    "notepad.exe": 0,
+    "calculatorapp.exe": 0,
+    "calc.exe": 0
+  },
+  "real_closes": {
+    "chrome.exe": 1,
+    "notepad.exe": 0,
+    "calculatorapp.exe": 0,
+    "calc.exe": 0
+  },
+  "vision_calls_db": 0,
+  "wall_s": 18.7
+}

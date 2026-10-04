@@ -1,0 +1,307 @@
+{
+  "id": "K1",
+  "title": "Dynamic page (stale refs)",
+  "instruction": "Open http://127.0.0.1:61239/spa, click 'Load data', then click the 'Confirm' button that appears, and tell me what the page heading says.",
+  "status": "FAILED",
+  "expected_status": "COMPLETED",
+  "status_ok": false,
+  "verified": false,
+  "summary": "Failed: 5/9 steps succeeded.\nReason: step s9 'Find the main heading element on the page' failed: could not resolve verification: reference '{{steps.s9.data.candidates.length}}' not found (missing 'candidates'); verification 'value_check' failed: unresolvable reference: reference '{{steps.s10.data.text}}' not found (missing 's10')\n- Find the main heading element on the page: could not resolve verification: reference '{{steps.s9.data.candidates.length}}' not found (missing 'candidates')\n2 step(s) were not run.\nAnswer: The 'Confirm' button was clicked as requested.",
+  "answer": "The 'Confirm' button was clicked as requested.",
+  "error": "step s9 'Find the main heading element on the page' failed: could not resolve verification: reference '{{steps.s9.data.candidates.length}}' not found (missing 'candidates'); verification 'value_check' failed: unresolvable reference: reference '{{steps.s10.data.text}}' not found (missing 's10')",
+  "llm_calls": 16,
+  "llm_budget": 10,
+  "llm_ok": false,
+  "vision_calls": 0,
+  "tool_calls": 15,
+  "tools": [
+    [
+      "browser_open",
+      "ok"
+    ],
+    [
+      "browser_find",
+      "ok"
+    ],
+    [
+      "browser_click",
+      "ok"
+    ],
+    [
+      "browser_find",
+      "ok"
+    ],
+    [
+      "browser_click",
+      "ok"
+    ],
+    [
+      "browser_read",
+      "ok"
+    ],
+    [
+      "browser_read",
+      "ok"
+    ],
+    [
+      "browser_read",
+      "ok"
+    ],
+    [
+      "browser_read",
+      "ok"
+    ],
+    [
+      "browser_find",
+      "element_not_found"
+    ],
+    [
+      "browser_find",
+      "element_not_found"
+    ],
+    [
+      "browser_find",
+      "element_not_found"
+    ],
+    [
+      "browser_read",
+      "ok"
+    ],
+    [
+      "browser_read",
+      "ok"
+    ],
+    [
+      "browser_read",
+      "ok"
+    ]
+  ],
+  "duration_s": 43.4,
+  "recoveries": 10,
+  "recovery_events": [
+    "adaptive_fallback",
+    "adaptive_fallback",
+    "refresh_state_retry",
+    "replan",
+    "refresh_state_retry",
+    "adaptive_fallback",
+    "replan",
+    "refresh_state_retry",
+    "alternative_target",
+    "adaptive_fallback"
+  ],
+  "input_tokens": 70604,
+  "output_tokens": 3025,
+  "llm_latency_ms": 30697,
+  "cost_usd": 0.1654,
+  "approvals": [],
+  "injection_events": 0,
+  "event_types": [
+    "action_completed",
+    "action_failed",
+    "action_started",
+    "observation_received",
+    "plan_created",
+    "plan_revised",
+    "planning_started",
+    "recovery_completed",
+    "recovery_started",
+    "status_changed",
+    "step_completed",
+    "step_failed",
+    "step_started",
+    "task_created",
+    "task_failed",
+    "tool_selected",
+    "usage_updated",
+    "verification_completed",
+    "verification_started"
+  ],
+  "plan_steps": [
+    [
+      "s1",
+      "tool",
+      "browser_open",
+      "SUCCEEDED",
+      "Browser open: SPA \u2014 http://127.0.0.1:61239/spa"
+    ],
+    [
+      "s2",
+      "tool",
+      "browser_find",
+      "SUCCEEDED",
+      "button \"Load data\" ref=e1"
+    ],
+    [
+      "s3",
+      "tool",
+      "browser_click",
+      "SUCCEEDED",
+      "I successfully clicked the 'Load data' button using the correct reference from the previous step's data."
+    ],
+    [
+      "s4",
+      "tool",
+      "browser_find",
+      "SUCCEEDED",
+      "button \"Confirm\" ref=e2"
+    ],
+    [
+      "s5",
+      "tool",
+      "browser_click",
+      "SUCCEEDED",
+      "I successfully clicked the 'Confirm' button using its reference ('e2'). The action was completed without navigation or errors."
+    ],
+    [
+      "s6",
+      "adaptive",
+      null,
+      "FAILED",
+      "Failed: verification parameter(s) missing: contains"
+    ],
+    [
+      "s7",
+      "tool",
+      "browser_read",
+      "FAILED",
+      "Failed: verification parameter(s) missing: contains"
+    ],
+    [
+      "s8",
+      "adaptive",
+      null,
+      "SKIPPED",
+      "Superseded by a revised plan"
+    ],
+    [
+      "s9",
+      "tool",
+      "browser_find",
+      "FAILED",
+      "Failed: could not resolve verification: reference '{{steps.s9.data.candidates.length}}' not found (missing 'candidates')"
+    ],
+    [
+      "s10",
+      "tool",
+      "browser_read",
+      "SKIPPED",
+      "Skipped: depends on s9 which did not complete"
+    ]
+  ],
+  "task_id": "task_cedb93014ec340de",
+  "model": "openrouter/openai/gpt-4.1",
+  "replans": 2,
+  "launch_tool_calls": 1,
+  "replayed_calls": 0,
+  "loop_guard_triggered": false,
+  "identical_side_effect_repeats": {},
+  "approvals_db": [],
+  "permission_decisions": [
+    {
+      "tool": "browser_open",
+      "via": "policy",
+      "action": "allow"
+    },
+    {
+      "tool": "browser_find",
+      "via": "policy",
+      "action": "allow"
+    },
+    {
+      "tool": "browser_click",
+      "via": "policy",
+      "action": "allow"
+    },
+    {
+      "tool": "browser_find",
+      "via": "policy",
+      "action": "allow"
+    },
+    {
+      "tool": "browser_click",
+      "via": "policy",
+      "action": "allow"
+    },
+    {
+      "tool": "browser_read",
+      "via": "policy",
+      "action": "allow"
+    },
+    {
+      "tool": "browser_read",
+      "via": "policy",
+      "action": "allow"
+    },
+    {
+      "tool": "browser_read",
+      "via": "policy",
+      "action": "allow"
+    },
+    {
+      "tool": "browser_read",
+      "via": "policy",
+      "action": "allow"
+    },
+    {
+      "tool": "browser_find",
+      "via": "policy",
+      "action": "allow"
+    },
+    {
+      "tool": "browser_find",
+      "via": "policy",
+      "action": "allow"
+    },
+    {
+      "tool": "browser_find",
+      "via": "policy",
+      "action": "allow"
+    },
+    {
+      "tool": "browser_read",
+      "via": "policy",
+      "action": "allow"
+    },
+    {
+      "tool": "browser_read",
+      "via": "policy",
+      "action": "allow"
+    },
+    {
+      "tool": "browser_read",
+      "via": "policy",
+      "action": "allow"
+    }
+  ],
+  "window_events": [
+    {
+      "t": 7.6,
+      "ev": "OPEN",
+      "hwnd": 3017148,
+      "proc": "chrome.exe",
+      "title": "Untitled - Google Chrome"
+    },
+    {
+      "t": 43.4,
+      "ev": "CLOSE",
+      "hwnd": 3017148,
+      "proc": "chrome.exe",
+      "title": "SPA - Google Chrome"
+    }
+  ],
+  "real_opens": {
+    "calculatorapp.exe": 0,
+    "chrome.exe": 1,
+    "notepad.exe": 0,
+    "calc.exe": 0
+  },
+  "real_closes": {
+    "calculatorapp.exe": 0,
+    "chrome.exe": 1,
+    "notepad.exe": 0,
+    "calc.exe": 0
+  },
+  "vision_calls_db": 0,
+  "wall_s": 45.6
+}

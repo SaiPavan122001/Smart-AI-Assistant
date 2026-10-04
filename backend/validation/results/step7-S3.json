@@ -1,0 +1,442 @@
+{
+  "id": "L",
+  "title": "Pause/resume",
+  "instruction": "Open Chrome and visit these pages one after another, reporting each page title: http://127.0.0.1:62152/doc/alpha, http://127.0.0.1:62152/doc/beta, http://127.0.0.1:62152/doc/gamma, http://127.0.0.1:62152/doc/delta, http://127.0.0.1:62152/doc/epsilon",
+  "status": "COMPLETED",
+  "expected_status": "COMPLETED",
+  "status_ok": true,
+  "verified": true,
+  "summary": "Completed: 10/12 steps succeeded and the result was verified.\nAnswer: alpha",
+  "answer": "alpha",
+  "error": null,
+  "llm_calls": 13,
+  "llm_budget": 8,
+  "llm_ok": false,
+  "vision_calls": 0,
+  "tool_calls": 16,
+  "tools": [
+    [
+      "browser_open",
+      "ok"
+    ],
+    [
+      "browser_read",
+      "ok"
+    ],
+    [
+      "browser_read",
+      "ok"
+    ],
+    [
+      "verify_browser_state",
+      "ok"
+    ],
+    [
+      "browser_read",
+      "ok"
+    ],
+    [
+      "browser_read",
+      "ok"
+    ],
+    [
+      "browser_read",
+      "ok"
+    ],
+    [
+      "browser_read",
+      "ok"
+    ],
+    [
+      "browser_navigate",
+      "ok"
+    ],
+    [
+      "browser_read",
+      "ok"
+    ],
+    [
+      "browser_navigate",
+      "ok"
+    ],
+    [
+      "browser_read",
+      "ok"
+    ],
+    [
+      "browser_navigate",
+      "ok"
+    ],
+    [
+      "browser_read",
+      "ok"
+    ],
+    [
+      "browser_navigate",
+      "ok"
+    ],
+    [
+      "browser_read",
+      "ok"
+    ]
+  ],
+  "duration_s": 71.5,
+  "recoveries": 7,
+  "recovery_events": [
+    "refresh_state_retry",
+    "adaptive_fallback",
+    "replan",
+    "refresh_state_retry",
+    "adaptive_fallback",
+    "replan",
+    "adaptive_fallback"
+  ],
+  "input_tokens": 66240,
+  "output_tokens": 11035,
+  "llm_latency_ms": 54968,
+  "cost_usd": 0.2208,
+  "approvals": [],
+  "injection_events": 0,
+  "event_types": [
+    "action_completed",
+    "action_started",
+    "observation_received",
+    "plan_created",
+    "plan_revised",
+    "planning_started",
+    "recovery_completed",
+    "recovery_started",
+    "status_changed",
+    "step_completed",
+    "step_failed",
+    "step_started",
+    "task_completed",
+    "task_created",
+    "task_paused",
+    "task_resumed",
+    "tool_selected",
+    "usage_updated",
+    "verification_completed",
+    "verification_started"
+  ],
+  "plan_steps": [
+    [
+      "s1",
+      "tool",
+      "browser_open",
+      "SUCCEEDED",
+      "Browser open: alpha \u2014 http://127.0.0.1:62152/doc/alpha"
+    ],
+    [
+      "s2",
+      "tool",
+      "browser_read",
+      "FAILED",
+      "Failed: verification parameter(s) missing: contains"
+    ],
+    [
+      "s3",
+      "tool",
+      "browser_navigate",
+      "SKIPPED",
+      "Superseded by a revised plan"
+    ],
+    [
+      "s4",
+      "tool",
+      "browser_read",
+      "SKIPPED",
+      "Superseded by a revised plan"
+    ],
+    [
+      "s5",
+      "tool",
+      "browser_navigate",
+      "SKIPPED",
+      "Superseded by a revised plan"
+    ],
+    [
+      "s6",
+      "tool",
+      "browser_read",
+      "SKIPPED",
+      "Superseded by a revised plan"
+    ],
+    [
+      "s7",
+      "tool",
+      "browser_navigate",
+      "SKIPPED",
+      "Superseded by a revised plan"
+    ],
+    [
+      "s8",
+      "tool",
+      "browser_read",
+      "SKIPPED",
+      "Superseded by a revised plan"
+    ],
+    [
+      "s9",
+      "tool",
+      "browser_navigate",
+      "SKIPPED",
+      "Superseded by a revised plan"
+    ],
+    [
+      "s10",
+      "tool",
+      "browser_read",
+      "SKIPPED",
+      "Superseded by a revised plan"
+    ],
+    [
+      "s11",
+      "tool",
+      "browser_read",
+      "FAILED",
+      "Failed: verification parameter(s) missing: contains"
+    ],
+    [
+      "s12",
+      "tool",
+      "browser_navigate",
+      "SKIPPED",
+      "Superseded by a revised plan"
+    ],
+    [
+      "s13",
+      "tool",
+      "browser_read",
+      "SKIPPED",
+      "Superseded by a revised plan"
+    ],
+    [
+      "s14",
+      "tool",
+      "browser_navigate",
+      "SKIPPED",
+      "Superseded by a revised plan"
+    ],
+    [
+      "s15",
+      "tool",
+      "browser_read",
+      "SKIPPED",
+      "Superseded by a revised plan"
+    ],
+    [
+      "s16",
+      "tool",
+      "browser_navigate",
+      "SKIPPED",
+      "Superseded by a revised plan"
+    ],
+    [
+      "s17",
+      "tool",
+      "browser_read",
+      "SKIPPED",
+      "Superseded by a revised plan"
+    ],
+    [
+      "s18",
+      "tool",
+      "browser_navigate",
+      "SKIPPED",
+      "Superseded by a revised plan"
+    ],
+    [
+      "s19",
+      "tool",
+      "browser_read",
+      "SKIPPED",
+      "Superseded by a revised plan"
+    ],
+    [
+      "s20",
+      "tool",
+      "browser_read",
+      "SUCCEEDED",
+      "I inspected the current browser state and read the title of the alpha page. The title is 'alpha'."
+    ],
+    [
+      "s21",
+      "tool",
+      "browser_navigate",
+      "SUCCEEDED",
+      "Navigated: beta \u2014 http://127.0.0.1:62152/doc/beta"
+    ],
+    [
+      "s22",
+      "tool",
+      "browser_read",
+      "SUCCEEDED",
+      "Read text of 'beta' (4 chars)"
+    ],
+    [
+      "s23",
+      "tool",
+      "browser_navigate",
+      "SUCCEEDED",
+      "Navigated: gamma \u2014 http://127.0.0.1:62152/doc/gamma"
+    ],
+    [
+      "s24",
+      "tool",
+      "browser_read",
+      "SUCCEEDED",
+      "Read text of 'gamma' (5 chars)"
+    ],
+    [
+      "s25",
+      "tool",
+      "browser_navigate",
+      "SUCCEEDED",
+      "Navigated: delta \u2014 http://127.0.0.1:62152/doc/delta"
+    ],
+    [
+      "s26",
+      "tool",
+      "browser_read",
+      "SUCCEEDED",
+      "Read text of 'delta' (5 chars)"
+    ],
+    [
+      "s27",
+      "tool",
+      "browser_navigate",
+      "SUCCEEDED",
+      "Navigated: epsilon \u2014 http://127.0.0.1:62152/doc/epsilon"
+    ],
+    [
+      "s28",
+      "tool",
+      "browser_read",
+      "SUCCEEDED",
+      "Read text of 'epsilon' (7 chars)"
+    ]
+  ],
+  "paused_flag": true,
+  "calls_started_while_paused": 0,
+  "task_id": "task_1987690ffb8246f1",
+  "model": "openrouter/openai/gpt-4.1",
+  "replans": 2,
+  "launch_tool_calls": 1,
+  "replayed_calls": 0,
+  "loop_guard_triggered": false,
+  "identical_side_effect_repeats": {},
+  "approvals_db": [],
+  "permission_decisions": [
+    {
+      "tool": "browser_open",
+      "via": "policy",
+      "action": "allow"
+    },
+    {
+      "tool": "browser_read",
+      "via": "policy",
+      "action": "allow"
+    },
+    {
+      "tool": "browser_read",
+      "via": "policy",
+      "action": "allow"
+    },
+    {
+      "tool": "verify_browser_state",
+      "via": "policy",
+      "action": "allow"
+    },
+    {
+      "tool": "browser_read",
+      "via": "policy",
+      "action": "allow"
+    },
+    {
+      "tool": "browser_read",
+      "via": "policy",
+      "action": "allow"
+    },
+    {
+      "tool": "browser_read",
+      "via": "policy",
+      "action": "allow"
+    },
+    {
+      "tool": "browser_read",
+      "via": "policy",
+      "action": "allow"
+    },
+    {
+      "tool": "browser_navigate",
+      "via": "policy",
+      "action": "allow"
+    },
+    {
+      "tool": "browser_read",
+      "via": "policy",
+      "action": "allow"
+    },
+    {
+      "tool": "browser_navigate",
+      "via": "policy",
+      "action": "allow"
+    },
+    {
+      "tool": "browser_read",
+      "via": "policy",
+      "action": "allow"
+    },
+    {
+      "tool": "browser_navigate",
+      "via": "policy",
+      "action": "allow"
+    },
+    {
+      "tool": "browser_read",
+      "via": "policy",
+      "action": "allow"
+    },
+    {
+      "tool": "browser_navigate",
+      "via": "policy",
+      "action": "allow"
+    },
+    {
+      "tool": "browser_read",
+      "via": "policy",
+      "action": "allow"
+    }
+  ],
+  "window_events": [
+    {
+      "t": 16.7,
+      "ev": "OPEN",
+      "hwnd": 2362256,
+      "proc": "chrome.exe",
+      "title": "Untitled - Google Chrome"
+    },
+    {
+      "t": 71.5,
+      "ev": "CLOSE",
+      "hwnd": 2362256,
+      "proc": "chrome.exe",
+      "title": "epsilon - Google Chrome"
+    }
+  ],
+  "real_opens": {
+    "calculatorapp.exe": 0,
+    "calc.exe": 0,
+    "notepad.exe": 0,
+    "chrome.exe": 1
+  },
+  "real_closes": {
+    "calculatorapp.exe": 0,
+    "calc.exe": 0,
+    "notepad.exe": 0,
+    "chrome.exe": 1
+  },
+  "vision_calls_db": 0,
+  "wall_s": 73.6
+}

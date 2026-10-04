@@ -1,0 +1,164 @@
+{
+  "id": "S9c",
+  "title": "Browser search blocked",
+  "instruction": "Open https://www.google.com in Chrome, type Java Spring Boot official documentation into the Google search box and press Enter, then open the official Spring Boot documentation.",
+  "status": "COMPLETED",
+  "expected_status": "COMPLETED",
+  "status_ok": true,
+  "verified": true,
+  "summary": "Completed: 3/4 steps succeeded and the result was verified.\nAnswer: The official Spring Boot documentation page is now open in the browser.",
+  "answer": "The official Spring Boot documentation page is now open in the browser.",
+  "error": null,
+  "llm_calls": 5,
+  "llm_budget": 10,
+  "llm_ok": true,
+  "vision_calls": 0,
+  "tool_calls": 4,
+  "tools": [
+    [
+      "browser_open",
+      "ok"
+    ],
+    [
+      "browser_type",
+      "blocked_by_site"
+    ],
+    [
+      "web_search",
+      "ok"
+    ],
+    [
+      "browser_open",
+      "ok"
+    ]
+  ],
+  "duration_s": 30.4,
+  "recoveries": 1,
+  "recovery_events": [
+    "replan"
+  ],
+  "input_tokens": 15496,
+  "output_tokens": 2117,
+  "llm_latency_ms": 14939,
+  "cost_usd": 0.0479,
+  "approvals": [],
+  "injection_events": 0,
+  "event_types": [
+    "action_completed",
+    "action_failed",
+    "action_started",
+    "observation_received",
+    "plan_created",
+    "plan_revised",
+    "planning_started",
+    "recovery_completed",
+    "recovery_started",
+    "status_changed",
+    "step_completed",
+    "step_failed",
+    "step_started",
+    "task_completed",
+    "task_created",
+    "tool_selected",
+    "usage_updated",
+    "verification_completed",
+    "verification_started"
+  ],
+  "plan_steps": [
+    [
+      "s1",
+      "tool",
+      "browser_open",
+      "SUCCEEDED",
+      "Browser open: Google \u2014 https://www.google.com/"
+    ],
+    [
+      "s2",
+      "tool",
+      "browser_type",
+      "FAILED",
+      "Failed: The site is showing a bot check (Google bot check (unusual traffic)) at https://www.google.com/sorry/index?continue=https://www.google.com/search%3Fq%3D"
+    ],
+    [
+      "s3",
+      "adaptive",
+      null,
+      "SKIPPED",
+      "Superseded by a revised plan"
+    ],
+    [
+      "s4",
+      "tool",
+      "web_search",
+      "SUCCEEDED",
+      "8 result(s) via duckduckgo: 1. Spring Boot :: Spring Boot <https://docs.spring.io/spring-boot/index.html>; 2. Documentation Overview :: Spring Boot <https://doc"
+    ],
+    [
+      "s5",
+      "adaptive",
+      null,
+      "SUCCEEDED",
+      "Opened the official Spring Boot documentation page (https://docs.spring.io/spring-boot/index.html) in the browser as requested."
+    ]
+  ],
+  "task_id": "task_7952359301584dec",
+  "model": "openrouter/openai/gpt-4.1",
+  "replans": 1,
+  "launch_tool_calls": 2,
+  "replayed_calls": 0,
+  "loop_guard_triggered": false,
+  "identical_side_effect_repeats": {},
+  "approvals_db": [],
+  "permission_decisions": [
+    {
+      "tool": "browser_open",
+      "via": "policy",
+      "action": "allow"
+    },
+    {
+      "tool": "browser_type",
+      "via": "policy",
+      "action": "allow"
+    },
+    {
+      "tool": "web_search",
+      "via": "policy",
+      "action": "allow"
+    },
+    {
+      "tool": "browser_open",
+      "via": "policy",
+      "action": "allow"
+    }
+  ],
+  "window_events": [
+    {
+      "t": 11.5,
+      "ev": "OPEN",
+      "hwnd": 17369860,
+      "proc": "chrome.exe",
+      "title": "Untitled - Google Chrome"
+    },
+    {
+      "t": 30.4,
+      "ev": "CLOSE",
+      "hwnd": 17369860,
+      "proc": "chrome.exe",
+      "title": "Spring Boot :: Spring Boot - Google Chrome"
+    }
+  ],
+  "real_opens": {
+    "chrome.exe": 1,
+    "calc.exe": 0,
+    "notepad.exe": 0,
+    "calculatorapp.exe": 0
+  },
+  "real_closes": {
+    "chrome.exe": 1,
+    "calc.exe": 0,
+    "notepad.exe": 0,
+    "calculatorapp.exe": 0
+  },
+  "vision_calls_db": 0,
+  "wall_s": 32.5
+}

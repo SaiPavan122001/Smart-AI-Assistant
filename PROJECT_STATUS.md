@@ -2,6 +2,13 @@
 
 _Last full validation run: 2026-10-04, Windows 11 (10.0.22631), Python 3.12.10, Node 22.18, Chrome/Edge 154, PostgreSQL 16.2 (embedded `pgserver`)._
 
+## Step 7 single-user campaign (2026-10-04) — classification: READY FOR MORE SINGLE-USER TESTING
+
+Full report: [docs/single-user-validation.md](docs/single-user-validation.md). Safety held in every scenario (STOP ~0.4 s, approvals specific/denial final, injection inert, loop guard never fired,
+no duplicate task, no secret leakage). Open defects before production hardening: **F2** a FAILED task can carry a false answer (answer_template/adaptive answers not gated on success),
+**F1** planner verification contracts reference non-existent fields in ~40 % of tasks (4 of 7 summary-type scenarios failed), plus F3-F8 (latency, weak criteria, LLM-call cost, pause-event ordering).
+Nothing was changed during the campaign.
+
 ## P0 execution-loop bug (2026-10-04) — status
 
 **Root-cause defects fixed and deterministic tests pass; real-world computer validation pending.** The agent could repeat side-effecting actions

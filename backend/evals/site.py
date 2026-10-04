@@ -106,6 +106,15 @@ class _Handler(BaseHTTPRequestHandler):
                 b"<!doctype html><title>Before you continue</title><p>Our systems have detected unusual traffic from your "
                 b"computer network.</p><p>I'm not a robot</p><a href='/'>Why did this happen?</a>"
             )
+        elif (
+            path == "/canvas"
+        ):  # content drawn on a <canvas>: absent from the DOM / accessibility tree (vision-only)
+            self._send(
+                b"<!doctype html><title>Canvas badge</title><h1>Visitor badge</h1>"
+                b"<canvas id='c' width='460' height='140' style='border:1px solid #888'></canvas>"
+                b"<script>const x=document.getElementById('c').getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,460,140);"
+                b"x.fillStyle='#000';x.font='bold 64px sans-serif';x.fillText('KX-4821',24,92);</script>"
+            )
         elif path.startswith("/slow/"):
             import time
 

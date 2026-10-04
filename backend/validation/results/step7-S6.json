@@ -1,0 +1,135 @@
+{
+  "id": "S6",
+  "title": "Vision fallback (canvas)",
+  "instruction": "Open http://127.0.0.1:59968/canvas and tell me the visitor code shown in the badge picture.",
+  "status": "COMPLETED",
+  "expected_status": "COMPLETED",
+  "status_ok": true,
+  "verified": true,
+  "summary": "Completed: 3/3 steps succeeded and the result was verified.\nAnswer: KX-4821",
+  "answer": "KX-4821",
+  "error": null,
+  "llm_calls": 3,
+  "llm_budget": 10,
+  "llm_ok": true,
+  "vision_calls": 1,
+  "tool_calls": 3,
+  "tools": [
+    [
+      "browser_open",
+      "ok"
+    ],
+    [
+      "vision_capture",
+      "ok"
+    ],
+    [
+      "vision_analyze",
+      "ok"
+    ]
+  ],
+  "duration_s": 13.1,
+  "recoveries": 0,
+  "recovery_events": [],
+  "input_tokens": 7536,
+  "output_tokens": 1075,
+  "llm_latency_ms": 9455,
+  "cost_usd": 0.0237,
+  "approvals": [],
+  "injection_events": 0,
+  "event_types": [
+    "action_completed",
+    "action_started",
+    "observation_received",
+    "plan_created",
+    "planning_started",
+    "status_changed",
+    "step_completed",
+    "step_started",
+    "task_completed",
+    "task_created",
+    "tool_selected",
+    "usage_updated",
+    "verification_completed",
+    "verification_started"
+  ],
+  "plan_steps": [
+    [
+      "s1",
+      "tool",
+      "browser_open",
+      "SUCCEEDED",
+      "Browser open: Canvas badge \u2014 http://127.0.0.1:59968/canvas"
+    ],
+    [
+      "s2",
+      "tool",
+      "vision_capture",
+      "SUCCEEDED",
+      "Captured browser (1280x900) as cap_fa199e38ecda48c8; analyse with vision_analyze"
+    ],
+    [
+      "s3",
+      "adaptive",
+      null,
+      "SUCCEEDED",
+      "The visitor code was extracted from the badge image in the screenshot using vision analysis."
+    ]
+  ],
+  "answer_has_code": true,
+  "task_id": "task_bb277e8dbbc74f5a",
+  "model": "openrouter/openai/gpt-4.1",
+  "replans": 0,
+  "launch_tool_calls": 1,
+  "replayed_calls": 0,
+  "loop_guard_triggered": false,
+  "identical_side_effect_repeats": {},
+  "approvals_db": [],
+  "permission_decisions": [
+    {
+      "tool": "browser_open",
+      "via": "policy",
+      "action": "allow"
+    },
+    {
+      "tool": "vision_capture",
+      "via": "policy",
+      "action": "allow"
+    },
+    {
+      "tool": "vision_analyze",
+      "via": "policy",
+      "action": "allow"
+    }
+  ],
+  "window_events": [
+    {
+      "t": 6.1,
+      "ev": "OPEN",
+      "hwnd": 2427760,
+      "proc": "chrome.exe",
+      "title": "Untitled - Google Chrome"
+    },
+    {
+      "t": 13.1,
+      "ev": "CLOSE",
+      "hwnd": 2427760,
+      "proc": "chrome.exe",
+      "title": "Canvas badge - Google Chrome"
+    }
+  ],
+  "real_opens": {
+    "calc.exe": 0,
+    "chrome.exe": 1,
+    "notepad.exe": 0,
+    "calculatorapp.exe": 0
+  },
+  "real_closes": {
+    "calc.exe": 0,
+    "chrome.exe": 1,
+    "notepad.exe": 0,
+    "calculatorapp.exe": 0
+  },
+  "vision_calls_db": 1,
+  "wall_s": 15.3
+}
