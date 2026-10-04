@@ -168,14 +168,16 @@ class VisionService:
         img = Image.open(io.BytesIO(png))
         w, h = img.size
         scale = min(1.0, _MAX_SIDE / max(w, h))
+        img_size = img.size
         if scale < 1.0:
-            img = img.resize((int(w * scale), int(h * scale)))
+            resized = img.resize((int(w * scale), int(h * scale)))
             buf = io.BytesIO()
-            img.save(buf, format="PNG", optimize=True)
+            resized.save(buf, format="PNG", optimize=True)
+            img_size = resized.size
             png = buf.getvalue()
         meta = CaptureMeta(
             id=new_id("cap"), source=source, origin_x=origin[0], origin_y=origin[1], width=w, height=h,
-            image_width=img.size[0], image_height=img.size[1], window_handle=window_handle,
+            image_width=img_size[0], image_height=img_size[1], window_handle=window_handle,
             window_title=window_title,
         )  # fmt: skip
         store = self._captures.setdefault(task_id, OrderedDict())
@@ -185,7 +187,8 @@ class VisionService:
         return meta
 
     def get_capture(self, task_id: str, capture_id: str) -> tuple[CaptureMeta, bytes]:
-        entry = self._captures.get(task_id, {}).get(capture_id)
+        store = self._captures.get(task_id)
+        entry = store.get(capture_id) if store else None
         if entry is None:
             raise AgentError(f"Unknown capture '{capture_id}' (captures expire); call vision_capture again",
                              code=ErrorCode.NOT_FOUND)  # fmt: skip

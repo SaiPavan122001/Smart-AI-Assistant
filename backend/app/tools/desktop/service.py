@@ -16,7 +16,7 @@ import re
 import shutil
 import time
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, TypeVar
+from typing import Any, TypeVar, cast
 
 from app.config.settings import DesktopSettings
 from app.tools.desktop.fallback import NoFallback, PyAutoGuiFallback
@@ -318,26 +318,32 @@ class DesktopService:
         return out
 
     async def read_element(self, el: UIElement) -> dict[str, Any]:
-        return await self._run(self.backend.read_element, el.ref)  # type: ignore[no-any-return]
+        return cast(dict[str, Any], await self._run(self.backend.read_element, el.ref))
 
     async def read_text(self, sel: WindowSel, max_chars: int) -> str:
         win = await self._guard_window(sel, for_input=False)
-        return await self._run(
-            self.backend.read_text, WindowSel(handle=win.handle), max_chars=max_chars
-        )  # type: ignore[no-any-return]
+        return cast(
+            str,
+            await self._run(
+                self.backend.read_text, WindowSel(handle=win.handle), max_chars=max_chars
+            ),
+        )
 
     async def scroll(
         self, el: UIElement | None, sel: WindowSel, direction: str, amount: int
     ) -> str:
         win = await self._guard_window(sel, for_input=True)
         async with self._lock:
-            return await self._run(
-                self.backend.scroll,
-                el.ref if el else None,
-                WindowSel(handle=win.handle),
-                direction,
-                amount,
-            )  # type: ignore[no-any-return]
+            return cast(
+                str,
+                await self._run(
+                    self.backend.scroll,
+                    el.ref if el else None,
+                    WindowSel(handle=win.handle),
+                    direction,
+                    amount,
+                ),
+            )
 
     async def launch(self, app: str, args: list[str]) -> dict[str, Any]:
         exe_name = self.settings.apps.get(app.lower())

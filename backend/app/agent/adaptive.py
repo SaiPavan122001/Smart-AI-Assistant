@@ -19,6 +19,7 @@ from app.planner.prompts import ADAPTIVE_SYSTEM, build_adaptive_user
 from app.tools.context import ExecutionContext
 from app.tools.registry import ToolRegistry
 from app.tools.render import render_result
+from app.tools.router import ToolRouter
 from app.utils.errors import ErrorCode, ErrorInfo
 
 log = get_logger("adaptive")
@@ -53,7 +54,7 @@ class AdaptiveOutcome:
 
 
 class AdaptiveRunner:
-    def __init__(self, gateway: LLMGateway, router: Any, registry: ToolRegistry) -> None:
+    def __init__(self, gateway: LLMGateway, router: ToolRouter, registry: ToolRegistry) -> None:
         self._gateway = gateway
         self._router = router
         self._registry = registry

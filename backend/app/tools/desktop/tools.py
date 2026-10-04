@@ -104,7 +104,7 @@ class DesktopWindows(Tool[NoArgs]):
     async def run(self, args: NoArgs, ctx: ExecutionContext) -> ToolOutput:
         svc = _svc(ctx)
         wins = [w for w in await svc.windows() if not svc.blocked_reason(w, for_input=False)]
-        data = [
+        data: list[dict[str, Any]] = [
             {
                 "handle": w.handle,
                 "title": w.title[:120],
@@ -328,13 +328,13 @@ class DesktopClick(Tool[ClickInput]):
             vision = ctx.services.vision
             if vision is None:
                 raise AgentError("Vision is not enabled", code=ErrorCode.NOT_AVAILABLE)
-            x, y, meta, el = vision.resolve_point(
+            x, y, meta, vel = vision.resolve_point(
                 ctx.task_id, args.vision_ref
             )  # raises LOW_CONFIDENCE
             sel = WindowSel(handle=meta.window_handle) if meta.window_handle else args.sel()
             await svc.click_point(x, y, sel=sel)
             return ToolOutput(
-                data={"method": "coordinates", "point": [x, y], "label": el.label}, summary=f'Clicked "{el.label}" at ({x},{y}) from vision result (confidence {el.confidence:.2f})',
+                data={"method": "coordinates", "point": [x, y], "label": vel.label}, summary=f'Clicked "{vel.label}" at ({x},{y}) from vision result (confidence {vel.confidence:.2f})',
                 perception_source="vision",
             )  # fmt: skip
         el = await _element(ctx, args)

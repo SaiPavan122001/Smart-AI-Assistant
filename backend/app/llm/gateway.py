@@ -11,6 +11,7 @@ from typing import TypeVar
 from pydantic import BaseModel
 
 from app.llm.base import (
+    Block,
     LLMProvider,
     LLMRequest,
     LLMResponse,
@@ -32,7 +33,7 @@ log = get_logger("llm")
 def _redact_messages(messages: list[Message]) -> list[Message]:
     out: list[Message] = []
     for m in messages:
-        blocks = []
+        blocks: list[Block] = []
         for b in m.content:
             if isinstance(b, TextBlock):
                 blocks.append(TextBlock(text=redact_text(b.text)))

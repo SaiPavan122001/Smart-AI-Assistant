@@ -76,7 +76,7 @@ class UIABackend:
         try:
             import psutil
 
-            return psutil.Process(pid).name()
+            return str(psutil.Process(pid).name())
         except Exception:
             return ""
 

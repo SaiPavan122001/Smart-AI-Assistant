@@ -6,6 +6,7 @@ import asyncio
 import contextlib
 import os
 import subprocess
+import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -22,7 +23,7 @@ class ProcessResult:
 
 
 def kill_process_tree(pid: int) -> None:
-    if os.name == "nt":
+    if sys.platform == "win32":
         with contextlib.suppress(Exception):
             subprocess.run(
                 ["taskkill", "/PID", str(pid), "/T", "/F"],

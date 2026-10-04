@@ -76,3 +76,9 @@ plugins = ["pydantic.mypy"]
 ignore_missing_imports = true
 files = ["app"]
 exclude = ["app/database/migrations"]
+warn_unused_ignores = false  # some ignores are platform dependent (Windows-only modules)
+
+[[tool.mypy.overrides]]
+module = ["app.tools.desktop.uia"]
+disallow_untyped_calls = false
+warn_return_any = false

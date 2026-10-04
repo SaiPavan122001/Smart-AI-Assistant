@@ -199,10 +199,14 @@ def build_container(
         include_vision=vision is not None,
     )
 
-    engine = PermissionEngine(PermissionPolicy())
+    perm_engine = PermissionEngine(PermissionPolicy())
     approvals = ApprovalManager(timeout_s=settings.limits.approval_timeout_s)
     router = ToolRouter(
-        registry, engine, approvals, repo, block_on_injection=settings.security.block_on_injection
+        registry,
+        perm_engine,
+        approvals,
+        repo,
+        block_on_injection=settings.security.block_on_injection,
     )
     planner = Planner(gateway, registry, services) if gateway is not None else None
     deps = RunnerDeps(
@@ -218,7 +222,7 @@ def build_container(
     )
     runtime = TaskRuntime(deps, kill)
     return Container(
-        settings=settings, repo=repo, bus=bus, registry=registry, engine=engine, approvals=approvals, router=router,
+        settings=settings, repo=repo, bus=bus, registry=registry, engine=perm_engine, approvals=approvals, router=router,
         metrics=metrics, services=services, kill_switch=kill, runtime=runtime, gateway=gateway, api_token=token,
         log_sink=TaskLogSink(repo), llm=llm_provider, _owned_providers=tuple(owned),
     )  # fmt: skip

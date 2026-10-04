@@ -77,8 +77,8 @@ class BrowserSession:
         self._tab_seq += 1
         tid = f"t{self._tab_seq}"
         self._pages[tid] = page
-        page.on("close", lambda _p=page, _t=tid: self._on_close(_t))
-        page.on("framenavigated", lambda frame, _p=page: self._on_nav(_p, frame))
+        page.on("close", lambda _p=page, _t=tid: self._on_close(_t))  # type: ignore[call-overload]
+        page.on("framenavigated", lambda frame, _p=page: self._on_nav(_p, frame))  # type: ignore[call-overload]
         return tid
 
     def _on_new_page(self, page: Page) -> None:

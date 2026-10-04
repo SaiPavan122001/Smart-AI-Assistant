@@ -314,7 +314,7 @@ async def value_check(p: dict[str, Any], ctx: ExecutionContext) -> CheckOutcome:
         elif op == "regex":
             ok = re.search(str(expected), str(actual)) is not None
         elif op in {"gt", "gte", "lt"}:
-            a, e = float(actual), float(expected)
+            a, e = float(actual or 0), float(expected or 0)
             ok = a > e if op == "gt" else a >= e if op == "gte" else a < e
         else:
             return CheckOutcome(False, f"unknown op '{op}'")

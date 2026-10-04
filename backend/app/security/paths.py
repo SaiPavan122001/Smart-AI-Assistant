@@ -101,7 +101,7 @@ class PathPolicy:
         # Explicitly allowed roots always win over broad default blocks they happen to sit under
         # (e.g. a workspace inside AppData); only *deeper* blocks inside a root are enforced.
         self._blocked = [
-            b for b in extra if not any(_is_within(r, str(b)) for r in self._rw + self._ro)
+            b for b in extra if not any(_is_within(str(r), str(b)) for r in self._rw + self._ro)
         ]
         self.workspace = (
             self._canon(workspace) if workspace else (self._rw[0] if self._rw else Path.cwd())

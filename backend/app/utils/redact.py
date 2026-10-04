@@ -6,6 +6,7 @@ string than to leak a credential into task history.
 
 from __future__ import annotations
 
+import itertools
 import re
 from collections.abc import Mapping
 from typing import Any
@@ -56,7 +57,7 @@ def is_sensitive_key(key: str) -> bool:
     tokens = [t for t in re.split(r"[^a-z0-9]+", _CAMEL.sub("_", key).lower()) if t]
     if any(t in _KEY_TOKENS for t in tokens):
         return True
-    return any((a, b) in _KEY_PAIRS for a, b in zip(tokens, tokens[1:], strict=False))
+    return any(pair in _KEY_PAIRS for pair in itertools.pairwise(tokens))
 
 
 def _is_maskable(v: Any) -> bool:

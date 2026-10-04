@@ -11,7 +11,7 @@ import asyncio
 import inspect
 import json
 import time
-from typing import Any
+from typing import Any, cast
 
 from pydantic import ValidationError
 
@@ -137,7 +137,9 @@ class ToolRouter:
             hit = ctx.cache.get(cache_key, spec.capability, spec.cache_ttl_s)
             if hit is not None:
                 ctx.meter.usage.cache_hits += 1
-                cached = hit.model_copy(update={"cached": True, "tool_call_id": call.id})
+                cached = cast(ToolResult, hit).model_copy(
+                    update={"cached": True, "tool_call_id": call.id}
+                )
                 await ctx.event(
                     EventType.OBSERVATION_RECEIVED,
                     f"{call.tool}: cached",
