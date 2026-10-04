@@ -349,7 +349,12 @@ class BrowserSession:
                 code=ErrorCode.ELEMENT_NOT_FOUND,
                 retryable=True,
             ) from exc
-        await asyncio.sleep(0.2)  # popups / target=_blank tabs register asynchronously
+        await asyncio.sleep(0.2)  # popups register asynchronously
+        if el is not None and el.new_tab:
+            for _ in range(40):  # target=_blank: wait for the new tab to actually appear
+                if len(self._pages) > tabs_before:
+                    break
+                await asyncio.sleep(0.1)
         if len(self._pages) > tabs_before:
             self.state.generation += 1
         await self._settle()

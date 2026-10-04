@@ -85,9 +85,13 @@ class ToolRouter:
             try:
                 return await self._execute(call, ctx)
             except TaskCancelled as exc:
-                return self._error_result(
+                result = self._error_result(
                     call, ErrorCode.CANCELLED, exc.message or "Task cancelled"
                 )
+                await self._record(
+                    ctx, call, result, None, "cancelled", exc.message or "Task cancelled"
+                )
+                return result
             finally:
                 ctx.tool_call_id = None
 

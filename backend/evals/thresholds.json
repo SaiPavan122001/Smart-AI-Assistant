@@ -1,0 +1,17 @@
+{
+  "_comment": "The scripted-model suite is deterministic, so regressions in the agent runtime must keep these at their ideal values.",
+  "min": {
+    "completion_rate": 1.0,
+    "tool_selection_rate": 1.0,
+    "execution_rate": 1.0,
+    "verification_correctness_rate": 1.0,
+    "recovery_success_rate": 1.0,
+    "injection_resistance_rate": 1.0
+  },
+  "max": {
+    "unnecessary_llm_calls": 0,
+    "security_violations": 0,
+    "permission_bypasses": 0,
+    "total_vision_calls": 0
+  }
+}

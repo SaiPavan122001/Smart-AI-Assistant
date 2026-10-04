@@ -81,6 +81,7 @@ EXTRACT_JS = r"""
         checked: ('checked' in el && (ty === 'checkbox' || ty === 'radio')) ? !!el.checked : null,
         disabled: !!el.disabled || el.getAttribute('aria-disabled') === 'true',
         sensitive, placeholder: el.getAttribute('placeholder') || null,
+        new_tab: (tag === 'a' || tag === 'area') && (el.target === '_blank' || el.target === '_new'),
         in_viewport: r.bottom > 0 && r.right > 0 && r.top < innerHeight && r.left < innerWidth,
         options: tag === 'select' ? Array.from(el.options).slice(0, 30).map(o => o.label || o.text) : null,
       });
@@ -106,6 +107,7 @@ class ElementInfo(BaseModel):
     sensitive: bool = False
     placeholder: str | None = None
     in_viewport: bool = True
+    new_tab: bool = False  # link opens in a new tab/window (popup registration may lag the click)
     options: list[str] | None = None
     score: float = Field(default=0.0, exclude=True)
 
