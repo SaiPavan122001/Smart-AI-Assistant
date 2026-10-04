@@ -153,10 +153,23 @@ class LimitSettings(BaseModel):
     max_concurrent_tasks: int = 2
 
 
+class SecretsSettings(BaseModel):
+    provider: Literal["env", "keyring"] = (
+        "env"  # where API keys are looked up when not set explicitly
+    )
+    keyring_service: str = "smart-ai-assistant"
+
+
 class SecuritySettings(BaseModel):
     api_token: SecretStr | None = None
+    # Browser origins allowed for CORS and WebSocket handshakes (dev UI on :5173, bundled UI on :8000).
     allowed_origins: list[str] = Field(
-        default_factory=lambda: ["http://localhost:5173", "http://127.0.0.1:5173"]
+        default_factory=lambda: [
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+            "http://localhost:8000",
+            "http://127.0.0.1:8000",
+        ]
     )
     allowed_hosts: list[str] = Field(
         default_factory=lambda: ["localhost", "127.0.0.1", "testserver"]
@@ -179,6 +192,7 @@ class Settings(BaseSettings):
     port: int = 8000
     log_level: str = "INFO"
     log_json: bool = True
+    serve_frontend: bool = True  # serve frontend/dist from the API process when it has been built
     data_dir: Path = Field(default_factory=lambda: _home() / "SmartAIAssistant" / "data")
 
     llm: LLMSettings = Field(default_factory=LLMSettings)
@@ -190,6 +204,7 @@ class Settings(BaseSettings):
     desktop: DesktopSettings = Field(default_factory=DesktopSettings)
     limits: LimitSettings = Field(default_factory=LimitSettings)
     security: SecuritySettings = Field(default_factory=SecuritySettings)
+    secrets: SecretsSettings = Field(default_factory=SecretsSettings)
 
     @field_validator("log_level")
     @classmethod

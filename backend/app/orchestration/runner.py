@@ -11,6 +11,7 @@ from pydantic import BaseModel
 
 from app.agent.adaptive import AdaptiveRunner
 from app.agent.executor import StepExecutor
+from app.agent.state import RunState, TaskHandle
 from app.llm.base import LLMRequest, Message
 from app.llm.gateway import LLMGateway
 from app.models.enums import EventType, StepStatus, TaskStatus
@@ -19,18 +20,17 @@ from app.models.task import Task, TaskResult
 from app.models.verification import VerificationResult, VerificationSpec
 from app.observability.logging import bind, get_logger
 from app.observability.metrics import Metrics
-from app.orchestration.events import EventBus
-from app.orchestration.state import RunState, TaskHandle
-from app.orchestration.templating import TemplateError, referenced_steps, resolve
 from app.permissions.approvals import ApprovalManager
 from app.planner.planner import Planner
 from app.recovery.engine import RecoveryEngine
+from app.state.events import EventBus
 from app.state.repository import AgentActionRecord, Repository
 from app.tools.context import ExecutionContext, ToolServices
 from app.tools.registry import ToolRegistry
 from app.tools.router import ToolRouter
 from app.utils.errors import AgentError, ErrorCode, ErrorInfo, LimitExceeded, TaskCancelled
 from app.utils.ids import utcnow
+from app.utils.templating import TemplateError, referenced_steps, resolve
 from app.verification.engine import VerificationEngine
 
 log = get_logger("runner")

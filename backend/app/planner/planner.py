@@ -14,12 +14,12 @@ from app.models.plan import Plan, PlanStep
 from app.models.verification import VerificationSpec
 from app.observability.logging import get_logger
 from app.observability.usage import UsageMeter
-from app.orchestration.templating import has_template, referenced_steps
 from app.planner.prompts import build_planner_system, build_planner_user
 from app.tools.context import ToolServices
 from app.tools.registry import ToolRegistry
 from app.utils.control import CancelToken
 from app.utils.errors import AgentError, ErrorCode
+from app.utils.templating import has_template, referenced_steps
 from app.verification.checks import REGISTRY as VERIFY_REGISTRY
 
 log = get_logger("planner")

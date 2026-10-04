@@ -6,11 +6,11 @@ from app.llm.scripted import ScriptedProvider, structured
 from app.models.plan import Plan, PlanStep
 from app.models.verification import VerificationSpec
 from app.observability.usage import UsageMeter
-from app.orchestration.templating import TemplateError, has_template, referenced_steps, resolve
 from app.planner.planner import MAX_STEPS, PlanDraft, Planner, validate_plan
 from app.planner.prompts import build_planner_system, build_planner_user, tool_catalog
 from app.utils.control import CancelToken
 from app.utils.errors import AgentError, ErrorCode
+from app.utils.templating import TemplateError, has_template, referenced_steps, resolve
 
 from tests.helpers import Env
 

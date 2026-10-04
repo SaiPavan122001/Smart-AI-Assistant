@@ -12,6 +12,7 @@ from typing import Any
 from alembic import command
 from alembic.config import Config
 
+from app.config.secrets import build_secret_provider
 from app.config.settings import Settings, get_settings
 from app.database.repository import SqlRepository
 from app.database.session import create_engine, create_session_factory, is_memory_url
@@ -20,18 +21,18 @@ from app.llm.factory import build_llm_provider
 from app.llm.gateway import LLMGateway
 from app.observability.logging import configure_logging, get_logger
 from app.observability.metrics import Metrics
-from app.observability.task_logs import TaskLogSink
-from app.orchestration.events import EventBus
 from app.orchestration.runner import RunnerDeps
 from app.orchestration.runtime import TaskRuntime
 from app.permissions.approvals import ApprovalManager
 from app.permissions.engine import PermissionEngine
 from app.permissions.policy import PermissionPolicy
 from app.planner.planner import Planner
+from app.registry import build_registry
 from app.security.paths import PathPolicy
+from app.state.events import EventBus
 from app.state.memory import InMemoryRepository
 from app.state.repository import Repository
-from app.tools.bootstrap import build_registry
+from app.state.task_logs import TaskLogSink
 from app.tools.context import ToolServices
 from app.tools.registry import ToolRegistry
 from app.tools.router import ToolRouter
@@ -65,6 +66,9 @@ class Container:
     async def start(self) -> None:
         if self.settings.database.auto_migrate and not is_memory_url(self.settings.database.url):
             await asyncio.to_thread(run_migrations, self.settings)
+        problem = await database_problem(self.repo, self.settings)
+        if problem:
+            raise RuntimeError(problem)
         stored = await self.repo.load_policy()
         if stored:
             try:
@@ -86,6 +90,30 @@ class Container:
         for p in self._owned_providers:
             await p.aclose()
         await self.repo.close()
+
+
+async def database_problem(
+    repo: Repository, settings: Settings, *, expect_schema: bool = True
+) -> str | None:
+    """Return an actionable description of what is wrong with the database, or ``None`` if it is usable."""
+    if is_memory_url(settings.database.url):
+        return None
+    target = settings.database.url.rsplit("@", 1)[-1]  # never print credentials
+    if not await repo.ping():
+        return (
+            f"Cannot connect to the database ({target}). Start PostgreSQL "
+            "(docker compose -f infra/docker/docker-compose.yml up -d) or fix SAA_DATABASE__URL; "
+            "to try the app without persistence set SAA_DATABASE__URL=memory://"
+        )
+    if expect_schema:
+        try:
+            await repo.list_tasks(limit=1)
+        except Exception:
+            return (
+                f"The database ({target}) is reachable but its schema is missing or outdated. "
+                "Run `python -m app migrate` (or set SAA_DATABASE__AUTO_MIGRATE=true)."
+            )
+    return None
 
 
 def run_migrations(settings: Settings) -> None:
@@ -233,6 +261,9 @@ def _build_vision_provider(settings: Settings, main: LLMProvider | None) -> LLMP
     from app.llm.openai import OpenAIProvider
 
     v = settings.vision
+    secrets = build_secret_provider(
+        settings.secrets.provider, keyring_service=settings.secrets.keyring_service
+    )
     key = v.api_key.get_secret_value() if v.api_key else None
     if v.provider == "anthropic":
         key = (
@@ -242,10 +273,10 @@ def _build_vision_provider(settings: Settings, main: LLMProvider | None) -> LLMP
                 if settings.llm.api_key and settings.llm.provider == "anthropic"
                 else None
             )
-            or os.environ.get("ANTHROPIC_API_KEY")
+            or secrets.get("ANTHROPIC_API_KEY")
         )
         return AnthropicProvider(api_key=key, model=v.model, base_url=v.base_url) if key else None
     if v.provider == "openai":
-        key = key or os.environ.get("OPENAI_API_KEY") or ("local" if v.base_url else None)
+        key = key or secrets.get("OPENAI_API_KEY") or ("local" if v.base_url else None)
         return OpenAIProvider(api_key=key, model=v.model, base_url=v.base_url) if key else None
     return None

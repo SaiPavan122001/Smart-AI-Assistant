@@ -27,7 +27,7 @@ def build_registry(*, include_browser: bool = True, include_desktop: bool = True
 
         for cls in VISION_TOOLS:
             registry.register(cls())
-    from app.tools.verification.tools import VERIFICATION_TOOLS
+    from app.verification.tools import VERIFICATION_TOOLS
 
     for cls in VERIFICATION_TOOLS:
         registry.register(cls())

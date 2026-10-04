@@ -13,12 +13,12 @@ from app.models.enums import ApprovalScope, ApprovalStatus, Capability, EventTyp
 from app.models.tool import RiskAssessment, ToolSpec
 from app.observability.metrics import Metrics
 from app.observability.usage import UsageMeter
-from app.orchestration.events import EventBus
 from app.perception.cache import ObservationCache, call_key
 from app.permissions.approvals import ApprovalManager
 from app.permissions.engine import PermissionEngine, TaskGrants
 from app.permissions.policy import Action, PermissionPolicy
 from app.security.urls import check_url
+from app.state.events import EventBus
 from app.state.memory import InMemoryRepository
 from app.utils.control import CancelToken, KillSwitch, PauseGate
 from app.utils.errors import ErrorCode, LimitExceeded, TaskCancelled, UrlViolation

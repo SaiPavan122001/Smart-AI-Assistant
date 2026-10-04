@@ -7,17 +7,17 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.agent.adaptive import AdaptiveOutcome, AdaptiveRunner
+from app.agent.state import RunState
 from app.models.enums import EventType, StepKind, StepStatus, TaskStatus
 from app.models.plan import PlanStep
 from app.models.tool import ToolCall, ToolResult
 from app.models.verification import VerificationResult, VerificationSpec
 from app.observability.logging import get_logger
-from app.orchestration.state import RunState
-from app.orchestration.templating import TemplateError, resolve
 from app.recovery.engine import RecoveryAttempt, RecoveryEngine, Strategy
 from app.tools.context import ExecutionContext
 from app.tools.router import ToolRouter
 from app.utils.errors import AgentError, ErrorCode, ErrorInfo, TaskCancelled
+from app.utils.templating import TemplateError, resolve
 from app.verification.engine import VerificationEngine
 
 log = get_logger("executor")

@@ -37,9 +37,17 @@ _ROLE_MAP = {
 }  # fmt: skip
 _INTERESTING = {
     "button", "textbox", "document", "combobox", "checkbox", "radio", "menu", "menuitem", "list", "listitem",
-    "tree", "treeitem", "tablist", "tab", "link", "slider", "grid", "griditem", "window", "toolbar",
+    "tree", "treeitem", "tablist", "tab", "link", "slider", "grid", "griditem", "window", "dialog", "toolbar",
 }  # fmt: skip
 _SENSITIVE_HINT = ("password", "passwort", "secret", "pin", "cvv", "card number")
+
+
+def _is_password(node: Any) -> bool:
+    """UI Automation exposes IsPassword for edit controls; treat failures as 'not a password field'."""
+    try:
+        return bool(node.element.CurrentIsPassword)
+    except Exception:
+        return False
 
 
 def _norm_text(t: str) -> str:
@@ -211,6 +219,8 @@ class UIABackend:
             ctype = node.control_type or ""
             name = (node.name or "").strip()
             role = _ROLE_MAP.get(ctype, ctype.lower() or "generic")
+            if role == "window" and (depth > 1 or (node.class_name or "") == "#32770"):
+                role = "dialog"  # standard dialog class or a nested top-level window
             if role in {"pane", "group", "image", "text"} and not name:
                 return None
             if ref is None:
@@ -234,7 +244,8 @@ class UIABackend:
                 enabled=enabled,
                 rect=_rect(node.rectangle),
                 depth=depth,
-                sensitive=role == "textbox" and any(h in low for h in _SENSITIVE_HINT),
+                sensitive=role in {"textbox", "document"}
+                and (_is_password(node) or any(h in low for h in _SENSITIVE_HINT)),
             )
         except Exception:
             return None
@@ -344,6 +355,8 @@ class UIABackend:
         w = self._wrap(ref)
         el = self.element(ref)
         data: dict[str, Any] = {"name": el.name if el else "", "role": el.role if el else ""}
+        if el is not None and el.sensitive:  # never read back the content of password-like controls
+            return {**data, "value": "(hidden: sensitive field)", "enabled": el.enabled}
         for key, fn in (
             ("value", lambda: w.iface_value.CurrentValue),
             ("text", lambda: w.window_text()),

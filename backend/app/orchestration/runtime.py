@@ -5,13 +5,13 @@ from __future__ import annotations
 import asyncio
 import contextlib
 
+from app.agent.state import TaskHandle
 from app.models.enums import EventType, TaskStatus
 from app.models.events import Correlation
 from app.models.task import Task
 from app.observability.logging import get_logger
 from app.observability.usage import UsageMeter
 from app.orchestration.runner import RunnerDeps, TaskRunner
-from app.orchestration.state import TaskHandle
 from app.utils.control import CancelToken, KillSwitch, PauseGate
 from app.utils.errors import AgentError, ErrorCode, NotFoundError
 from app.utils.ids import new_id, utcnow

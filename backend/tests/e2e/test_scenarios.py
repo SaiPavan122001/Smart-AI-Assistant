@@ -155,7 +155,7 @@ def project_plan(code: str) -> dict[str, Any]:
 
 async def test_open_vscode_create_project_run_and_verify(env: Env) -> None:
     """'Open VS Code, create a Python project called expense_tracker, create the files, run it.'"""
-    from app.tools.bootstrap import build_registry
+    from app.registry import build_registry
     from app.tools.desktop.memory import FakeDesktopBackend, FakeWindow
     from app.tools.desktop.service import DesktopService
 

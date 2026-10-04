@@ -12,6 +12,7 @@ from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from app import __version__
 from app.api import errors
 from app.api.deps import AuthDep
+from app.api.spa import mount_frontend
 from app.api.v1 import agent, approvals, permissions, system, tasks, ws
 from app.config.settings import get_settings
 from app.container import Container, build_container
@@ -85,6 +86,9 @@ def create_app(container: Container | None = None) -> FastAPI:
         return Response(
             request.app.state.container.metrics.render(), media_type="text/plain; version=0.0.4"
         )
+
+    if settings.serve_frontend:
+        mount_frontend(app)  # last: API routes win; unknown non-API paths fall back to the SPA
 
     return app
 

@@ -10,11 +10,11 @@ from app.models.events import Correlation
 from app.models.plan import Plan
 from app.models.task import Task
 from app.observability.usage import UsageMeter
-from app.orchestration.events import EventBus
 from app.perception.cache import ObservationCache
 from app.permissions.engine import TaskGrants
 from app.recovery.engine import RecoveryAttempt
 from app.security.injection import InjectionGuard
+from app.state.events import EventBus
 from app.state.machine import transition
 from app.state.repository import Repository
 from app.utils.control import CancelToken, PauseGate

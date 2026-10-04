@@ -17,15 +17,15 @@ from app.models.enums import EventType, TaskStatus
 from app.models.events import Correlation
 from app.observability.metrics import Metrics
 from app.observability.usage import UsageMeter
-from app.orchestration.events import EventBus
 from app.perception.cache import ObservationCache
 from app.permissions.approvals import ApprovalManager
 from app.permissions.engine import PermissionEngine, TaskGrants
 from app.permissions.policy import PermissionPolicy
+from app.registry import build_registry
 from app.security.injection import InjectionGuard
 from app.security.paths import PathPolicy
+from app.state.events import EventBus
 from app.state.memory import InMemoryRepository
-from app.tools.bootstrap import build_registry
 from app.tools.context import ExecutionContext, ToolServices
 from app.tools.router import ToolRouter
 from app.utils.control import CancelToken, KillSwitch, PauseGate

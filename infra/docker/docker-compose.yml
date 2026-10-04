@@ -1,0 +1,25 @@
+# PostgreSQL for local development / single-user installs.
+#   docker compose -f infra/docker/docker-compose.yml up -d
+# The agent itself must run on the host (it controls your Windows desktop), so only the database is containerised.
+name: smart-ai-assistant
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: saa
+      POSTGRES_PASSWORD: ${SAA_DB_PASSWORD:-saa}   # override outside of local development
+      POSTGRES_DB: saa
+    ports:
+      - "127.0.0.1:5432:5432"   # loopback only
+    volumes:
+      - saa_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U saa -d saa"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  saa_pgdata:
