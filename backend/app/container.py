@@ -1,0 +1,247 @@
+"""Composition root: builds every long-lived collaborator from settings (no hidden globals)."""
+
+from __future__ import annotations
+
+import asyncio
+import os
+import secrets
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+from alembic import command
+from alembic.config import Config
+
+from app.config.settings import Settings, get_settings
+from app.database.repository import SqlRepository
+from app.database.session import create_engine, create_session_factory, is_memory_url
+from app.llm.base import LLMProvider
+from app.llm.factory import build_llm_provider
+from app.llm.gateway import LLMGateway
+from app.observability.logging import configure_logging, get_logger
+from app.observability.metrics import Metrics
+from app.observability.task_logs import TaskLogSink
+from app.orchestration.events import EventBus
+from app.orchestration.runner import RunnerDeps
+from app.orchestration.runtime import TaskRuntime
+from app.permissions.approvals import ApprovalManager
+from app.permissions.engine import PermissionEngine
+from app.permissions.policy import PermissionPolicy
+from app.planner.planner import Planner
+from app.security.paths import PathPolicy
+from app.state.memory import InMemoryRepository
+from app.state.repository import Repository
+from app.tools.bootstrap import build_registry
+from app.tools.context import ToolServices
+from app.tools.registry import ToolRegistry
+from app.tools.router import ToolRouter
+from app.tools.vision.service import LLMVisionProvider, VisionService
+from app.utils.control import KillSwitch
+
+log = get_logger("container")
+BACKEND_DIR = Path(__file__).resolve().parents[1]
+
+
+@dataclass
+class Container:
+    settings: Settings
+    repo: Repository
+    bus: EventBus
+    registry: ToolRegistry
+    engine: PermissionEngine
+    approvals: ApprovalManager
+    router: ToolRouter
+    metrics: Metrics
+    services: ToolServices
+    kill_switch: KillSwitch
+    runtime: TaskRuntime
+    gateway: LLMGateway | None
+    api_token: str
+    log_sink: TaskLogSink
+    llm: LLMProvider | None = None
+    _owned_providers: tuple[LLMProvider, ...] = ()
+
+    # ------------------------------------------------------------------ lifecycle
+    async def start(self) -> None:
+        if self.settings.database.auto_migrate and not is_memory_url(self.settings.database.url):
+            await asyncio.to_thread(run_migrations, self.settings)
+        stored = await self.repo.load_policy()
+        if stored:
+            try:
+                self.engine.update_policy(PermissionPolicy.model_validate(stored))
+            except Exception:
+                log.warning("stored permission policy is invalid; using defaults")
+        self.log_sink.start()
+        orphans = await self.runtime.recover_orphans()
+        if orphans:
+            log.warning("marked interrupted tasks as failed", extra={"count": orphans})
+
+    async def stop(self) -> None:
+        await self.runtime.shutdown()
+        if self.services.browser is not None:
+            await self.services.browser.shutdown()
+        if self.services.desktop is not None:
+            self.services.desktop.shutdown()
+        await self.log_sink.stop()
+        for p in self._owned_providers:
+            await p.aclose()
+        await self.repo.close()
+
+
+def run_migrations(settings: Settings) -> None:
+    cfg = Config(str(BACKEND_DIR / "alembic.ini"))
+    cfg.set_main_option("script_location", str(BACKEND_DIR / "app" / "database" / "migrations"))
+    os.environ["SAA_MIGRATION_URL"] = settings.database.url
+    try:
+        command.upgrade(cfg, "head")
+    finally:
+        os.environ.pop("SAA_MIGRATION_URL", None)
+
+
+def build_path_policy(settings: Settings) -> PathPolicy:
+    fs = settings.filesystem
+    fs.workspace.mkdir(parents=True, exist_ok=True)
+    return PathPolicy(
+        allowed_roots=settings.resolved_allowed_roots(),
+        read_only_roots=fs.read_only_roots,
+        workspace=fs.workspace,
+        blocked_write_extensions=fs.blocked_write_extensions,
+    )
+
+
+def build_container(
+    settings: Settings | None = None,
+    *,
+    repo: Repository | None = None,
+    llm: LLMProvider | None = None,
+    vision_llm: LLMProvider | None = None,
+    desktop_backend: Any | None = None,
+    enable_browser: bool | None = None,
+    enable_desktop: bool | None = None,
+) -> Container:
+    settings = settings or get_settings()
+    configure_logging(settings.log_level, json_logs=settings.log_json)
+    settings.data_dir.mkdir(parents=True, exist_ok=True)
+
+    # ---- persistence ----
+    if repo is None:
+        if is_memory_url(settings.database.url):
+            log.warning("using the in-memory repository: nothing is persisted")
+            repo = InMemoryRepository()
+        else:
+            engine = create_engine(settings.database)
+            repo = SqlRepository(engine, create_session_factory(engine))
+
+    # ---- security primitives ----
+    path_policy = build_path_policy(settings)
+    kill = KillSwitch()
+    metrics = Metrics()
+    bus = EventBus(repo)
+
+    token = settings.security.api_token.get_secret_value() if settings.security.api_token else ""
+    if not token:
+        if settings.env == "prod":
+            raise RuntimeError("SAA_SECURITY__API_TOKEN must be set when SAA_ENV=prod")
+        token = secrets.token_urlsafe(32)
+        log.warning(
+            "no API token configured; generated an ephemeral one",
+            extra={"hint": "set SAA_SECURITY__API_TOKEN"},
+        )
+
+    # ---- perception / actuators ----
+    browser = None
+    if enable_browser if enable_browser is not None else True:
+        from app.tools.browser.manager import BrowserManager
+
+        browser = BrowserManager(settings.browser, path_policy)
+
+    desktop = None
+    if settings.desktop.enabled and (enable_desktop if enable_desktop is not None else True):
+        from app.tools.desktop.service import DesktopService
+        from app.tools.desktop.uia import UIABackend
+
+        backend = desktop_backend or UIABackend()
+        svc = DesktopService(backend, settings.desktop)
+        if svc.available():
+            desktop = svc
+        else:
+            svc.shutdown()
+            log.info("windows UI automation unavailable; desktop tools are disabled")
+
+    llm_provider = llm if llm is not None else build_llm_provider(settings)
+    owned: list[LLMProvider] = [llm_provider] if (llm_provider is not None and llm is None) else []
+    gateway = LLMGateway(llm_provider) if llm_provider is not None else None
+
+    vision = None
+    if settings.vision.enabled:
+        v_provider = vision_llm
+        if v_provider is None and settings.vision.provider != "none":
+            v_provider = _build_vision_provider(settings, llm_provider)
+            if v_provider is not None and v_provider is not llm_provider:
+                owned.append(v_provider)
+        if v_provider is not None:
+            vision = VisionService(
+                LLMVisionProvider(LLMGateway(v_provider)),
+                min_confidence=settings.vision.min_confidence,
+            )
+
+    services = ToolServices(
+        settings=settings,
+        path_policy=path_policy,
+        metrics=metrics,
+        browser=browser,
+        desktop=desktop,
+        vision=vision,
+    )
+    registry = build_registry(
+        include_browser=browser is not None,
+        include_desktop=desktop is not None,
+        include_vision=vision is not None,
+    )
+
+    engine = PermissionEngine(PermissionPolicy())
+    approvals = ApprovalManager(timeout_s=settings.limits.approval_timeout_s)
+    router = ToolRouter(
+        registry, engine, approvals, repo, block_on_injection=settings.security.block_on_injection
+    )
+    planner = Planner(gateway, registry, services) if gateway is not None else None
+    deps = RunnerDeps(
+        repo=repo,
+        bus=bus,
+        registry=registry,
+        router=router,
+        approvals=approvals,
+        services=services,
+        metrics=metrics,
+        gateway=gateway,
+        planner=planner,
+    )
+    runtime = TaskRuntime(deps, kill)
+    return Container(
+        settings=settings, repo=repo, bus=bus, registry=registry, engine=engine, approvals=approvals, router=router,
+        metrics=metrics, services=services, kill_switch=kill, runtime=runtime, gateway=gateway, api_token=token,
+        log_sink=TaskLogSink(repo), llm=llm_provider, _owned_providers=tuple(owned),
+    )  # fmt: skip
+
+
+def _build_vision_provider(settings: Settings, main: LLMProvider | None) -> LLMProvider | None:
+    from app.llm.anthropic import AnthropicProvider
+    from app.llm.openai import OpenAIProvider
+
+    v = settings.vision
+    key = v.api_key.get_secret_value() if v.api_key else None
+    if v.provider == "anthropic":
+        key = (
+            key
+            or (
+                settings.llm.api_key.get_secret_value()
+                if settings.llm.api_key and settings.llm.provider == "anthropic"
+                else None
+            )
+            or os.environ.get("ANTHROPIC_API_KEY")
+        )
+        return AnthropicProvider(api_key=key, model=v.model, base_url=v.base_url) if key else None
+    if v.provider == "openai":
+        key = key or os.environ.get("OPENAI_API_KEY") or ("local" if v.base_url else None)
+        return OpenAIProvider(api_key=key, model=v.model, base_url=v.base_url) if key else None
+    return None
