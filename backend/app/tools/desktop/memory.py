@@ -10,6 +10,7 @@ from __future__ import annotations
 import itertools
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from app.tools.desktop.models import (
@@ -186,7 +187,7 @@ class FakeDesktopBackend:
 
     def launch(self, executable: str, args: list[str]) -> int:
         self.launched.append((executable, args))
-        handler = self.launch_handlers.get(executable.lower())
+        handler = self.launch_handlers.get(Path(executable).stem.lower())
         if handler:
             w = handler(self)
             self.windows.append(w)

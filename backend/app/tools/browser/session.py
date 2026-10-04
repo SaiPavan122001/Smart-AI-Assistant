@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import os
 import re
@@ -25,6 +26,7 @@ from app.tools.browser.elements import (
     score_elements,
 )
 from app.utils.errors import AgentError, ErrorCode, UrlViolation
+from app.utils.text_match import ACT_THRESHOLD
 
 log = get_logger("browser")
 
@@ -310,12 +312,15 @@ class BrowserSession:
         if not query:
             raise AgentError("Provide 'ref' or 'query'", code=ErrorCode.INVALID_INPUT)
         found = await self.find(query, role, limit=4)
-        matches = found["matches"]
+        matches = [m for m in found["matches"] if m["score"] >= ACT_THRESHOLD]
         if not matches:
             raise AgentError(
                 f"No element matches '{query}'" + (f" (role {role})" if role else ""),
                 code=ErrorCode.ELEMENT_NOT_FOUND, retryable=True,
-                details={"hint": "Use browser_read(mode='elements') to list what is on the page"},
+                details={
+                    "hint": "Use browser_read(mode='elements') to list what is on the page",
+                    "closest": [f'{m["role"]} "{m["name"][:50]}" ref={m["ref"]}' for m in found["matches"][:3]],
+                },
             )  # fmt: skip
         if found["ambiguous"]:
             raise AgentError(
@@ -328,6 +333,7 @@ class BrowserSession:
     # ------------------------------------------------------------------ actions
     async def click(self, loc: Locator, el: ElementInfo | None) -> dict[str, Any]:
         before = self.page.url
+        tabs_before = len(self._pages)
         try:
             await loc.scroll_into_view_if_needed(timeout=5000)
             await loc.click(timeout=self._settings.default_timeout_ms)
@@ -343,6 +349,9 @@ class BrowserSession:
                 code=ErrorCode.ELEMENT_NOT_FOUND,
                 retryable=True,
             ) from exc
+        await asyncio.sleep(0.2)  # popups / target=_blank tabs register asynchronously
+        if len(self._pages) > tabs_before:
+            self.state.generation += 1
         await self._settle()
         self.state.generation += 1
         self.state.last_action = f"click {el.brief() if el else ''}".strip()

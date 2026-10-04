@@ -226,10 +226,18 @@ class PathPolicy:
     def _realpath_lenient(p: Path) -> Path:
         existing = p
         tail: list[str] = []
-        while not existing.exists() and existing != existing.parent:
+        while existing != existing.parent:
+            try:
+                if existing.exists():
+                    break
+            except OSError:
+                pass  # unreadable (e.g. access denied): treat as absent; containment is checked next
             tail.append(existing.name)
             existing = existing.parent
-        real = Path(os.path.realpath(str(existing)))
+        try:
+            real = Path(os.path.realpath(str(existing)))
+        except OSError as exc:
+            raise PathViolation("Path cannot be resolved") from exc
         for part in reversed(tail):
             real = real / part
         return real

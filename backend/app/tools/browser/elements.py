@@ -7,6 +7,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from app.utils.text_match import ACT_THRESHOLD, SUGGEST_THRESHOLD, partial_score
+
 # Runs in the page. Collects visible interactive elements (piercing open shadow roots),
 # stamps each with a data-saa-ref attribute and returns compact descriptors.
 EXTRACT_JS = r"""
@@ -123,16 +125,11 @@ class ElementInfo(BaseModel):
         )
 
 
-_WORD = re.compile(r"[a-z0-9]+")
 ROLE_ALIASES = {
     "input": "textbox", "text": "textbox", "field": "textbox", "searchbox": "textbox", "textarea": "textbox",
     "dropdown": "combobox", "select": "combobox", "listbox": "combobox", "a": "link", "btn": "button",
     "submit": "button", "tickbox": "checkbox",
 }  # fmt: skip
-
-
-def _tokens(s: str) -> list[str]:
-    return _WORD.findall(s.lower())
 
 
 def normalize_role(role: str | None) -> str | None:
@@ -145,56 +142,55 @@ def normalize_role(role: str | None) -> str | None:
 def score_elements(
     elements: list[ElementInfo], query: str, role: str | None = None
 ) -> list[ElementInfo]:
-    """Deterministic ranking of elements for a natural-language query (no LLM involved)."""
+    """Deterministic ranking of elements for a natural-language query (no LLM involved).
+
+    Scores >= ACT_THRESHOLD are actionable; lower ones (>= SUGGEST_THRESHOLD) are only suggestions.
+    """
     q = query.lower().strip()
-    qt = _tokens(q)
     want_role = normalize_role(role)
     scored: list[ElementInfo] = []
     for el in elements:
         name = (el.name or "").lower()
-        hay = " ".join(
-            x
-            for x in (
-                name,
-                (el.placeholder or "").lower(),
-                (el.value or "").lower() if el.role == "button" else "",
-                (el.href or "").lower(),
-            )
-            if x
-        )
+        labels = " ".join(
+            x for x in (name, (el.placeholder or "").lower(), (el.value or "").lower() if el.role == "button" else "") if x
+        )  # fmt: skip
         s = 0.0
         if q and name == q:
             s = 100.0
         elif q and name.startswith(q):
             s = 85.0
-        elif q and q in name:
+        elif q and len(q) >= 3 and q in name:
             s = 70.0 + 10.0 * (len(q) / max(len(name), 1))
-        elif qt:
-            nt = set(_tokens(hay))
-            hits = sum(1 for t in qt if t in nt or any(t in w for w in nt))
-            if hits:
-                s = 20.0 + 40.0 * hits / len(qt)
+        else:
+            s = partial_score(q, labels)
+            if s == 0.0 and el.href:
+                s = min(partial_score(q, el.href) * 0.6, 35.0)  # URL words only ever *suggest*
+        if s <= 0:
+            continue
         if want_role:
             if el.role == want_role or (
                 want_role == "textbox" and el.role in {"textbox", "searchbox"}
             ):
-                s += 10.0 if s else 25.0
-            elif s:
+                s += 10.0
+            else:
                 s -= 15.0
-        if s <= 0:
-            continue
         if el.disabled:
             s -= 8.0
         if el.in_viewport:
             s += 2.0
-        el = el.model_copy(update={"score": round(s, 1)})
-        scored.append(el)
+        if s < SUGGEST_THRESHOLD:
+            continue
+        scored.append(el.model_copy(update={"score": round(s, 1)}))
     scored.sort(key=lambda e: -e.score)
     return scored
 
 
 def is_ambiguous(ranked: list[ElementInfo]) -> bool:
-    return len(ranked) > 1 and ranked[0].score >= 50 and (ranked[0].score - ranked[1].score) < 5
+    return (
+        len(ranked) > 1
+        and ranked[0].score >= ACT_THRESHOLD
+        and (ranked[0].score - ranked[1].score) < 5
+    )
 
 
 SENSITIVE_ACTION = re.compile(

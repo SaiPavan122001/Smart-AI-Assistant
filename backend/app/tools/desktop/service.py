@@ -30,6 +30,7 @@ from app.tools.desktop.models import (
     WindowSel,
 )
 from app.utils.errors import AgentError, ErrorCode, PolicyViolation
+from app.utils.text_match import ACT_THRESHOLD, SUGGEST_THRESHOLD, partial_score
 
 T = TypeVar("T")
 _WORD = re.compile(r"[a-z0-9]+")
@@ -48,7 +49,6 @@ def score_ui(
 ) -> list[tuple[float, UIElement]]:
     q = (query or "").lower().strip()
     want = _ROLE_ALIASES.get((role or "").lower(), (role or "").lower() or None)
-    qt = _tokens(q)
     out: list[tuple[float, UIElement]] = []
     for el in elements:
         s = 0.0
@@ -65,17 +65,16 @@ def score_ui(
                 s = max(s, 85.0)
             elif q in name:
                 s = max(s, 70.0)
-            elif qt:
-                nt = set(_tokens(name + " " + el.automation_id.lower()))
-                hits = sum(1 for t in qt if t in nt)
-                if hits:
-                    s = max(s, 20.0 + 40.0 * hits / len(qt))
+            else:
+                s = max(s, partial_score(q, name))
         if s <= 0:
             continue
         if want:
             s += 10.0 if el.role == want else -15.0
         if not el.enabled:
             s -= 8.0
+        if s < SUGGEST_THRESHOLD:
+            continue
         out.append((s, el))
     out.sort(key=lambda t: -t[0])
     return out
@@ -254,6 +253,7 @@ class DesktopService:
         snap, ranked, ambiguous = await self.find(
             sel, query=query, role=role, automation_id=automation_id, limit=4
         )
+        ranked = [(s, e) for s, e in ranked if s >= ACT_THRESHOLD]
         if not ranked:
             raise AgentError(
                 f"No UI element matches '{query or automation_id}' in '{snap.window.title}'. "

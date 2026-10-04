@@ -329,6 +329,8 @@ class ToolRouter:
             EventType.APPROVAL_DENIED, req.action,
             {"approval_id": req.id, "status": req.status.value, "note": req.decision_note},
         )  # fmt: skip
+        if req.status == ApprovalStatus.CANCELLED:
+            raise TaskCancelled("Task cancelled while waiting for approval")
         await ctx.set_status(TaskStatus.EXECUTING)
         ctx.denied.add(orig_key)
         code = (

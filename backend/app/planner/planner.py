@@ -177,9 +177,13 @@ class Planner:
             )
             if draft.needs_clarification and not draft.steps:
                 return PlanOutcome(clarification=draft.needs_clarification)
-            plan = draft_to_plan(draft, task_id, version=version)
-            problems = validate_plan(plan, self._registry, known_prior=prior)
-            if not problems:
+            try:
+                plan = draft_to_plan(draft, task_id, version=version)
+                problems = validate_plan(plan, self._registry, known_prior=prior)
+            except ValidationError as exc:  # e.g. a tool step without a tool name
+                problems = [e["msg"] for e in exc.errors()[:6]]
+                plan = None
+            if plan is not None and not problems:
                 return PlanOutcome(plan=plan)
             log.info(
                 "plan rejected by validation", extra={"problems": problems[:6], "attempt": attempt}

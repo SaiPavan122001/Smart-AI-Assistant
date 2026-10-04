@@ -12,12 +12,16 @@ from typing import Any
 
 MASK = "***REDACTED***"
 
-# Keys whose *values* are always masked, regardless of content.
-_SENSITIVE_KEY = re.compile(
-    r"(pass(word|wd)?|secret|token|api[_-]?key|authorization|auth|cookie|session[_-]?id|"
-    r"private[_-]?key|credential|bearer|client[_-]?secret|connection[_-]?string|database[_-]?url)",
-    re.IGNORECASE,
-)
+# Keys whose *values* are always masked, matched on whole word-tokens ("passed" is not "pass").
+_KEY_TOKENS = frozenset({
+    "password", "passwd", "pwd", "passphrase", "pass", "secret", "secrets", "token", "apikey",
+    "authorization", "auth", "cookie", "cookies", "credential", "credentials", "bearer",
+})  # fmt: skip
+_KEY_PAIRS = frozenset({
+    ("api", "key"), ("private", "key"), ("session", "id"), ("client", "secret"), ("access", "key"),
+    ("secret", "key"), ("connection", "string"), ("database", "url"), ("db", "url"), ("auth", "token"),
+})  # fmt: skip
+_CAMEL = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
 
 # Value patterns that look like credentials, wherever they appear in free text.
 _VALUE_PATTERNS: tuple[re.Pattern[str], ...] = (
@@ -49,7 +53,17 @@ def redact_text(text: str) -> str:
 
 
 def is_sensitive_key(key: str) -> bool:
-    return bool(_SENSITIVE_KEY.search(key))
+    tokens = [t for t in re.split(r"[^a-z0-9]+", _CAMEL.sub("_", key).lower()) if t]
+    if any(t in _KEY_TOKENS for t in tokens):
+        return True
+    return any((a, b) in _KEY_PAIRS for a, b in zip(tokens, tokens[1:], strict=False))
+
+
+def _is_maskable(v: Any) -> bool:
+    """Credentials are strings or structures; counters/flags (e.g. token usage) are not secrets."""
+    if isinstance(v, bool | int | float) or v is None:
+        return False
+    return not (isinstance(v, str) and not v)
 
 
 def redact(value: Any, *, _depth: int = 0) -> Any:
@@ -61,7 +75,7 @@ def redact(value: Any, *, _depth: int = 0) -> Any:
     if isinstance(value, Mapping):
         out: dict[Any, Any] = {}
         for k, v in value.items():
-            if isinstance(k, str) and is_sensitive_key(k) and v not in (None, "", False, 0):
+            if isinstance(k, str) and is_sensitive_key(k) and _is_maskable(v):
                 out[k] = MASK
             else:
                 out[k] = redact(v, _depth=_depth + 1)
