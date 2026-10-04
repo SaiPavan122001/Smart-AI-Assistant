@@ -308,3 +308,18 @@ async def test_gateway_respects_cancellation_and_vision_budget() -> None:
 
 def test_tool_use_helpers() -> None:
     assert tool_use("fs_list", path="x").tool_uses[0].input == {"path": "x"}
+
+
+async def test_quota_errors_are_not_retried() -> None:
+    calls = {"n": 0}
+
+    def h(req: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        return httpx.Response(
+            429, json={"error": {"code": "insufficient_quota", "message": "no credits"}}
+        )
+
+    p = OpenAIProvider(api_key="k", model="m", client=client(h))
+    with pytest.raises(LLMError) as ei:
+        await p.complete(LLMRequest(system="s", messages=[Message.user("x")]))
+    assert calls["n"] == 1 and not ei.value.retryable

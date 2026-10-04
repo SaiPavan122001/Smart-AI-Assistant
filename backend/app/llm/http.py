@@ -41,7 +41,12 @@ async def post_json(
                 retryable=resp.status_code in _RETRYABLE,
                 details={"status": resp.status_code},
             )
-            if resp.status_code not in _RETRYABLE:
+            quota = any(
+                m in resp.text
+                for m in ("insufficient_quota", "credit_balance", "billing_hard_limit")
+            )
+            if resp.status_code not in _RETRYABLE or quota:  # out of credit never succeeds on retry
+                err.retryable = False
                 raise err
             last = err
             retry_after = resp.headers.get("retry-after")

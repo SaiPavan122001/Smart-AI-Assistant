@@ -1,0 +1,36 @@
+[
+  {
+    "id": "A",
+    "title": "Open Chrome",
+    "instruction": "Open Chrome.",
+    "status": "FAILED",
+    "expected_status": "COMPLETED",
+    "status_ok": false,
+    "verified": false,
+    "summary": "FAILED: LLM HTTP 429: {\n    \"error\": {\n        \"message\": \"You have no credits remaining. Add credits to continue using the API at https://platform.openai.com/settings/organization/billing/.\",\n        \"type\": \"insufficient_quota\",\n        \"param\": null,\n        \"code\": \"credit_balance_exhausted\"\n    }\n}\n",
+    "answer": null,
+    "error": "LLM HTTP 429: {\n    \"error\": {\n        \"message\": \"You have no credits remaining. Add credits to continue using the API at https://platform.openai.com/settings/organization/billing/.\",\n        \"type\": \"insufficient_quota\",\n        \"param\": null,\n        \"code\": \"credit_balance_exhausted\"\n    }\n}\n",
+    "llm_calls": 1,
+    "llm_budget": 3,
+    "llm_ok": true,
+    "vision_calls": 0,
+    "tool_calls": 0,
+    "tools": [],
+    "duration_s": 1.1,
+    "recoveries": 0,
+    "recovery_events": [],
+    "input_tokens": 0,
+    "output_tokens": 0,
+    "llm_latency_ms": 0,
+    "cost_usd": 0.0,
+    "approvals": [],
+    "injection_events": 0,
+    "event_types": [
+      "planning_started",
+      "status_changed",
+      "task_created",
+      "task_failed"
+    ],
+    "plan_steps": []
+  }
+]
