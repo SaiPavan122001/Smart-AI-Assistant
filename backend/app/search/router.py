@@ -52,7 +52,9 @@ class SearchRouter:
         raise AgentError(
             f"Web search is unavailable ({why}). Configure a search API key (BRAVE_API_KEY or TAVILY_API_KEY) "
             "or try again later. I will not try to solve a CAPTCHA or bypass a bot check.",
-            code=ErrorCode.NOT_AVAILABLE, details={"attempts": [a.model_dump() for a in attempts]},
+            code=ErrorCode.SEARCH_UNAVAILABLE,
+            # provider-specific reasons stay in metadata; behaviour keys off the code only
+            details={"attempts": [a.model_dump() for a in attempts]},
         )  # fmt: skip
 
     async def aclose(self) -> None:

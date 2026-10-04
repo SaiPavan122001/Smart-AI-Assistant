@@ -17,6 +17,7 @@ from app.models.tool import RetryPolicy, RiskAssessment
 from app.security.paths import PathPolicy, ResolvedPath
 from app.tools.base import Tool, ToolOutput
 from app.tools.context import ExecutionContext
+from app.tools.schema import OutputModel
 from app.utils.errors import AgentError, ErrorCode, PathViolation
 
 _TEXT_EXT = {
@@ -57,6 +58,67 @@ def _resolve(ctx: ExecutionContext, raw: str, **kw: Any) -> ResolvedPath:
     return ctx.paths.resolve(raw, cwd=ctx.cwd, **kw)
 
 
+# ----------------------------------------------------------------------------- output contracts
+class FsEntry(OutputModel):
+    name: str
+    type: str = Field(description="file | dir | unknown")
+    size: int | None = Field(default=None, description="bytes (files only)")
+    modified: str | None = None
+
+
+class FsListOutput(OutputModel):
+    path: str
+    entries: list[FsEntry]
+    truncated: bool
+
+
+class FsMatch(FsEntry):
+    path: str
+
+
+class FsSearchOutput(OutputModel):
+    root: str
+    matches: list[FsMatch]
+    scanned: int
+    truncated: bool
+
+
+class FsReadOutput(OutputModel):
+    path: str
+    format: str = Field(description="text | pdf")
+    text: str
+    size: int
+    pages: int | None = Field(default=None, description="pdf only")
+    truncated: bool | None = Field(default=None, description="text only")
+
+
+class FsCreateOutput(OutputModel):
+    path: str
+    kind: str = Field(description="file | dir")
+    created: bool | None = Field(default=None, description="dir only: false if it already existed")
+    bytes: int | None = Field(default=None, description="file only: bytes written")
+
+
+class FsCreateArtifacts(OutputModel):
+    path: str
+    kind: str
+    bytes: int | None = None
+
+
+class FsTransferOutput(OutputModel):
+    src: str
+    dst: str
+
+
+class FsDeleteOutput(OutputModel):
+    path: str
+    recycled: bool
+
+
+class FsPathArtifacts(OutputModel):
+    path: str
+
+
 # ----------------------------------------------------------------------------- fs_list
 class FsListInput(BaseModel):
     path: str = Field(
@@ -71,7 +133,7 @@ class FsListInput(BaseModel):
 
 class FsList(Tool[FsListInput]):
     name = "fs_list"
-    returns = "path, entries[{name,type,size,modified}], truncated"
+    Output = FsListOutput
     description = (
         "List files and folders in an allowed directory (optionally recursive, with glob filter)."
     )
@@ -143,7 +205,7 @@ class FsSearchInput(BaseModel):
 
 class FsSearch(Tool[FsSearchInput]):
     name = "fs_search"
-    returns = "matches[{path,name,type,size}] (use matches.length for the count, matches[0].path), scanned, truncated"
+    Output = FsSearchOutput
     description = (
         "Search for files by name pattern, extension and/or text content under an allowed folder."
     )
@@ -218,7 +280,7 @@ class FsReadInput(BaseModel):
 
 class FsRead(Tool[FsReadInput]):
     name = "fs_read"
-    returns = "path, text, format, size"
+    Output = FsReadOutput
     description = (
         "Read a text file or extract text from a PDF. Content is returned as untrusted data."
     )
@@ -318,7 +380,8 @@ class FsCreateInput(BaseModel):
 
 class FsCreate(Tool[FsCreateInput]):
     name = "fs_create"
-    returns = "path, created, kind"
+    Output = FsCreateOutput
+    Artifacts = FsCreateArtifacts
     description = (
         "Create a folder (kind='dir') or a text file (kind='file', with content) inside an allowed root. "
         "Parent folders are created. Existing files are only replaced when overwrite=true."
@@ -406,7 +469,8 @@ def _same_or_inside(child: Path, parent: Path) -> bool:
 
 class FsMove(Tool[FsMoveInput]):
     name = "fs_move"
-    returns = "src, dst"
+    Output = FsTransferOutput
+    Artifacts = FsTransferOutput
     description = "Move or rename a file/folder within allowed roots. Fails if the destination exists unless overwrite=true."
     capability = Capability.FILESYSTEM
     Input = FsMoveInput
@@ -447,7 +511,8 @@ class FsCopyInput(FsMoveInput):
 
 class FsCopy(Tool[FsCopyInput]):
     name = "fs_copy"
-    returns = "src, dst"
+    Output = FsTransferOutput
+    Artifacts = FsTransferOutput
     description = "Copy a file/folder within allowed roots. Fails if the destination exists unless overwrite=true."
     capability = Capability.FILESYSTEM
     Input = FsCopyInput
@@ -490,7 +555,8 @@ class FsDeleteInput(BaseModel):
 
 class FsDelete(Tool[FsDeleteInput]):
     name = "fs_delete"
-    returns = "path, recycled"
+    Output = FsDeleteOutput
+    Artifacts = FsPathArtifacts
     description = (
         "Delete a file or folder (moved to the Recycle Bin, recoverable). Always requires approval."
     )

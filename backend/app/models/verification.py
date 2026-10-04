@@ -29,4 +29,7 @@ class VerificationResult(BaseModel):
     evidence: dict[str, Any] = Field(default_factory=dict)
     message: str = ""
     method: str = "deterministic"  # or "llm_judgement" (lower assurance)
+    polls: int = 1  # checker invocations (1 = decided on the immediate first check)
+    duration_ms: float = 0.0
+    terminal: bool = False  # failed in a way that waiting/retrying cannot change (contract error)
     created_at: datetime = Field(default_factory=utcnow)

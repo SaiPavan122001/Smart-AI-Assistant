@@ -11,6 +11,7 @@ from app.models.tool import RiskAssessment
 from app.tools.base import Tool, ToolOutput
 from app.tools.context import ExecutionContext
 from app.tools.desktop.models import WindowSel
+from app.tools.schema import OutputModel
 from app.tools.vision.service import ObservationRequest, VisionService, result_to_data
 from app.utils.errors import AgentError, ErrorCode
 
@@ -20,6 +21,30 @@ def _vision(ctx: ExecutionContext) -> VisionService:
     if svc is None:
         raise AgentError("Vision is not enabled in this deployment", code=ErrorCode.NOT_AVAILABLE)
     return svc
+
+
+class CaptureOutput(OutputModel):
+    capture_id: str
+    source: str
+    size: list[int] = Field(description="[width, height]")
+    window: str | None = None
+
+
+class VisionElementOut(OutputModel):
+    ref: str
+    label: str
+    kind: str
+    confidence: float
+
+
+class AnalyzeOutput(OutputModel):
+    vision_id: str
+    confidence: float
+    needs_confirmation: bool
+    answer: str = Field(description="what the vision model saw / read")
+    verdict: bool | None = Field(default=None, description="mode=verify")
+    text: str | None = Field(default=None, description="mode=read_text")
+    elements: list[VisionElementOut]
 
 
 class CaptureInput(BaseModel):
@@ -36,6 +61,7 @@ class CaptureInput(BaseModel):
 
 class VisionCapture(Tool[CaptureInput]):
     name = "vision_capture"
+    Output = CaptureOutput
     description = (
         "FALLBACK ONLY. Capture a screenshot (window/screen/browser) for vision_analyze. Use only when DOM/accessibility "
         "and UI Automation cannot answer the question; the reason is recorded."
@@ -121,6 +147,7 @@ class AnalyzeInput(BaseModel):
 
 class VisionAnalyze(Tool[AnalyzeInput]):
     name = "vision_analyze"
+    Output = AnalyzeOutput
     description = (
         "FALLBACK ONLY. Analyse a captured screenshot with the vision model. Returns structured elements with confidence. "
         "Low-confidence results must not be acted on; re-capture or ask the user."

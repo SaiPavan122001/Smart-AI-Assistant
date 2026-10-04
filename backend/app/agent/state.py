@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -38,6 +39,10 @@ class TaskHandle:
         default_factory=LoopGuard
     )  # action ledger + loop detection for this task
     asyncio_task: Any = None
+    run_state: Any = None  # RunState once the runner started (owns status transitions)
+    # Serialises pause/resume requests with the task parking itself, so their events and the
+    # persisted status can never interleave (a slow database write must not reorder them).
+    pause_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
 
 class RunState:
@@ -52,12 +57,20 @@ class RunState:
         self.step_data: dict[str, dict[str, Any]] = {}
         self.history: list[RecoveryAttempt] = []
         self.replans_used = 0
-        self.answer: str | None = None
+        # Non-retryable conditions that already got their one re-plan (a second one is final).
+        self.replanned_codes: set[Any] = set()
+        # Answers reported by adaptive steps, keyed by step id. Nothing here is "the answer" of the
+        # task: the final answer is decided once, from final state, in app.agent.answer.
+        self.step_answers: dict[str, str] = {}
         self.artifacts: dict[str, Any] = {}
         self.last_verification: list[
             Any
         ] = []  # newest final-verification results (for failure reports)
         self._status_before_wait: TaskStatus | None = None
+        self._status_before_pause: TaskStatus | None = None
+        self._pause_lock = handle.pause_lock
+        handle.run_state = self
+        handle.pause.on_park = self.enter_pause
 
     # ------------------------------------------------------------------ scope for templates
     @property
@@ -128,6 +141,37 @@ class RunState:
             message or target.value,
             {"status": target.value, "previous": current.value},
         )
+
+    # ------------------------------------------------------------------ pause
+    async def gate(self) -> None:
+        """Park here while paused. Call before anything that costs or acts (LLM call, re-plan)."""
+        self.handle.token.raise_if_cancelled()
+        await self.handle.pause.wait_if_paused(self.handle.token)
+
+    async def enter_pause(self) -> None:
+        """The task reached the gate while paused: persist PAUSED, then announce it."""
+        async with self._pause_lock:
+            current = self.task.status
+            if not self.handle.pause.paused or current is TaskStatus.PAUSED or current.is_terminal:
+                return
+            self._status_before_pause = current
+            self.handle.meter.usage.pause_count += 1
+            await self.set_status(TaskStatus.PAUSED, "Paused: nothing runs until resumed")
+            await self.emit(
+                EventType.PAUSE_COMPLETED,
+                "Paused: no tool, model call, recovery or re-plan runs until resumed",
+                {"status": TaskStatus.PAUSED.value, "previous": current.value},
+            )
+
+    async def leave_pause(self) -> TaskStatus:
+        """Restore the interrupted phase. Called BEFORE the execution gate is released."""
+        async with self._pause_lock:
+            self.task.paused = False
+            if self.task.status is TaskStatus.PAUSED:
+                await self.set_status(self._status_before_pause or TaskStatus.EXECUTING, "Resumed")
+            else:
+                await self.save()
+            return self.task.status
 
     async def save(self) -> None:
         self.task.updated_at = utcnow()

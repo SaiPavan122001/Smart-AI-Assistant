@@ -7,6 +7,8 @@ from app.utils.errors import AgentError, ErrorCode
 
 S = TaskStatus
 
+_ACTIVE = frozenset({S.PLANNING, S.EXECUTING, S.WAITING_APPROVAL, S.RECOVERING, S.VERIFYING})
+
 _ALLOWED: dict[TaskStatus, frozenset[TaskStatus]] = {
     S.CREATED: frozenset({S.PLANNING, S.CANCELLED, S.FAILED}),
     S.PLANNING: frozenset({S.EXECUTING, S.FAILED, S.CANCELLED, S.TIMED_OUT, S.WAITING_APPROVAL}),
@@ -30,6 +32,8 @@ _ALLOWED: dict[TaskStatus, frozenset[TaskStatus]] = {
     S.VERIFYING: frozenset(
         {S.COMPLETED, S.EXECUTING, S.RECOVERING, S.PLANNING, S.FAILED, S.CANCELLED, S.TIMED_OUT}
     ),
+    # PAUSED is entered from any active phase and returns to the phase it interrupted.
+    S.PAUSED: frozenset({*_ACTIVE, S.FAILED, S.CANCELLED, S.TIMED_OUT}),
     S.COMPLETED: frozenset(),
     S.FAILED: frozenset(),
     S.CANCELLED: frozenset(),
@@ -42,6 +46,8 @@ class InvalidTransition(AgentError):
 
 
 def can_transition(current: TaskStatus, target: TaskStatus) -> bool:
+    if target is S.PAUSED and current in _ACTIVE:
+        return True
     return current == target or target in _ALLOWED[current]
 
 

@@ -23,6 +23,7 @@ from app.tools.router import ToolRouter
 from app.utils.errors import ErrorCode, ErrorInfo
 
 log = get_logger("adaptive")
+_USER_REFUSALS = (ErrorCode.APPROVAL_DENIED, ErrorCode.APPROVAL_TIMEOUT)
 
 FINISH_TOOL = LLMToolDef(
     name="finish_step",
@@ -71,7 +72,7 @@ class AdaptiveRunner:
 
     async def run(
         self, *, title: str, goal: str, allowed_tools: list[str], context_text: str, rationale: str,
-        ctx: ExecutionContext, max_iterations: int,
+        ctx: ExecutionContext, max_iterations: int, stop_on_refusal: bool = False,
     ) -> AdaptiveOutcome:  # fmt: skip
         tools = [*self._registry.llm_tools(allowed_tools or None), FINISH_TOOL]
         messages: list[Message] = [Message.user(build_adaptive_user(goal, context_text, title))]
@@ -100,11 +101,50 @@ class AdaptiveRunner:
                 )  # fmt: skip
             messages.append(Message(role="assistant", content=blocks))
             replies: list[ToolResultBlock] = []
+            batch_failed: str | None = None
             for tu in resp.tool_uses:
                 if tu.name == "finish_step":
+                    if batch_failed is not None:
+                        # The model finished before seeing that an action of this batch failed:
+                        # its claim is not evidence. Let it look at the results first.
+                        replies.append(
+                            ToolResultBlock(
+                                tool_use_id=tu.id,
+                                is_error=True,
+                                content=f"finish_step ignored: '{batch_failed}' failed in this batch. "
+                                "Read the results, then decide.",
+                            )  # fmt: skip
+                        )
+                        continue
                     return self._finish(tu, i, artifacts, results)
+                if batch_failed is not None:
+                    # Later calls were chosen assuming the earlier one worked: do not run them.
+                    replies.append(
+                        ToolResultBlock(
+                            tool_use_id=tu.id,
+                            is_error=True,
+                            content=f"skipped: the earlier call '{batch_failed}' in this batch failed",
+                        )  # fmt: skip
+                    )
+                    continue
                 result = await self._call(tu, ctx, rationale or goal, seen)
                 results.append(result)
+                if not result.ok:
+                    batch_failed = tu.name
+                    refused = result.error is not None and result.error.code in _USER_REFUSALS
+                    if stop_on_refusal and refused and result.error is not None:
+                        # Recovery of a failed action, and the user said no to the workaround.
+                        # That is final: the loop must not go on asking for other risky
+                        # actions to get around the refusal.
+                        return AdaptiveOutcome(
+                            success=False, iterations=i, artifacts=artifacts, results=results,
+                            summary="Stopped: the user did not approve a required action.",
+                            error=ErrorInfo(
+                                code=result.error.code,
+                                message=f"The user did not approve '{tu.name}'; it was not performed "
+                                "and no alternative was attempted.",
+                            ),
+                        )  # fmt: skip
                 if ctx.loop_guard.tripped:  # stop the batch: no further tool call may run
                     return _loop_outcome(ctx, i, artifacts, results)
                 artifacts.update(

@@ -84,6 +84,17 @@
         "title": "AgentStatus",
         "type": "object"
       },
+      "AnswerStatus": {
+        "description": "What the ``answer`` text is. Only ``ANSWERED`` is a success answer.",
+        "enum": [
+          "ANSWERED",
+          "NOT_REQUESTED",
+          "answer_unavailable",
+          "WITHHELD"
+        ],
+        "title": "AnswerStatus",
+        "type": "string"
+      },
       "ApprovalRequest": {
         "description": "A specific, human-readable request. Never a vague 'Allow action?'.",
         "properties": {
@@ -436,7 +447,8 @@
           "timeout",
           "cancelled",
           "limit_exceeded",
-          "blocked_by_site",
+          "SEARCH_UNAVAILABLE",
+          "SEARCH_AUTOMATION_BLOCKED",
           "loop_detected",
           "policy_denied",
           "approval_denied",
@@ -515,6 +527,10 @@
           "verification_completed",
           "usage_updated",
           "status_changed",
+          "pause_requested",
+          "pause_completed",
+          "resume_requested",
+          "resume_completed",
           "task_paused",
           "task_resumed",
           "task_completed",
@@ -1320,6 +1336,136 @@
         "title": "TaskList",
         "type": "object"
       },
+      "TaskMetrics": {
+        "description": "One flat, secret-free record per finished task (logged and stored with the result).",
+        "properties": {
+          "answer_generation_calls": {
+            "default": 0,
+            "title": "Answer Generation Calls",
+            "type": "integer"
+          },
+          "answer_status": {
+            "default": "",
+            "title": "Answer Status",
+            "type": "string"
+          },
+          "final_status": {
+            "default": "",
+            "title": "Final Status",
+            "type": "string"
+          },
+          "llm_calls": {
+            "default": 0,
+            "title": "Llm Calls",
+            "type": "integer"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "pause_count": {
+            "default": 0,
+            "title": "Pause Count",
+            "type": "integer"
+          },
+          "planner_calls": {
+            "default": 0,
+            "title": "Planner Calls",
+            "type": "integer"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          },
+          "recovery_count": {
+            "default": 0,
+            "title": "Recovery Count",
+            "type": "integer"
+          },
+          "repair_calls": {
+            "default": 0,
+            "title": "Repair Calls",
+            "type": "integer"
+          },
+          "replanner_calls": {
+            "default": 0,
+            "title": "Replanner Calls",
+            "type": "integer"
+          },
+          "resume_count": {
+            "default": 0,
+            "title": "Resume Count",
+            "type": "integer"
+          },
+          "task_duration": {
+            "default": 0.0,
+            "title": "Task Duration",
+            "type": "number"
+          },
+          "task_id": {
+            "title": "Task Id",
+            "type": "string"
+          },
+          "tool_calls": {
+            "default": 0,
+            "title": "Tool Calls",
+            "type": "integer"
+          },
+          "verification_attempts": {
+            "default": 0,
+            "title": "Verification Attempts",
+            "type": "integer"
+          },
+          "verification_duration": {
+            "default": 0.0,
+            "title": "Verification Duration",
+            "type": "number"
+          },
+          "verified": {
+            "default": false,
+            "title": "Verified",
+            "type": "boolean"
+          },
+          "vision_calls": {
+            "default": 0,
+            "title": "Vision Calls",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "task_id"
+        ],
+        "title": "TaskMetrics",
+        "type": "object"
+      },
+      "TaskOutcome": {
+        "description": "Why a task ended. Finer-grained than ``TaskStatus`` (several map to FAILED).",
+        "enum": [
+          "COMPLETED",
+          "FAILED",
+          "CANCELLED",
+          "TIMED_OUT",
+          "DENIED",
+          "LOOP_DETECTED",
+          "PLAN_INVALID"
+        ],
+        "title": "TaskOutcome",
+        "type": "string"
+      },
       "TaskResult": {
         "properties": {
           "answer": {
@@ -1332,6 +1478,10 @@
               }
             ],
             "title": "Answer"
+          },
+          "answer_status": {
+            "$ref": "#/components/schemas/AnswerStatus",
+            "default": "NOT_REQUESTED"
           },
           "artifacts": {
             "additionalProperties": true,
@@ -1353,6 +1503,20 @@
               }
             ]
           },
+          "metrics": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TaskMetrics"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/TaskOutcome",
+            "default": "FAILED"
+          },
           "status": {
             "$ref": "#/components/schemas/TaskStatus"
           },
@@ -1369,6 +1533,10 @@
             },
             "title": "Verification",
             "type": "array"
+          },
+          "verification_status": {
+            "$ref": "#/components/schemas/VerificationStatus",
+            "default": "NOT_RUN"
           },
           "verified": {
             "default": false,
@@ -1391,6 +1559,7 @@
           "EXECUTING",
           "RECOVERING",
           "VERIFYING",
+          "PAUSED",
           "COMPLETED",
           "FAILED",
           "CANCELLED",
@@ -1709,6 +1878,11 @@
             "$ref": "#/components/schemas/ApprovalRequirement",
             "default": "policy"
           },
+          "artifacts_schema": {
+            "additionalProperties": true,
+            "title": "Artifacts Schema",
+            "type": "object"
+          },
           "audit": {
             "$ref": "#/components/schemas/AuditPolicy"
           },
@@ -1830,6 +2004,11 @@
             "title": "Actions",
             "type": "integer"
           },
+          "answer_generation_calls": {
+            "default": 0,
+            "title": "Answer Generation Calls",
+            "type": "integer"
+          },
           "approvals": {
             "default": 0,
             "title": "Approvals",
@@ -1850,6 +2029,16 @@
             "title": "Input Tokens",
             "type": "integer"
           },
+          "judge_calls": {
+            "default": 0,
+            "title": "Judge Calls",
+            "type": "integer"
+          },
+          "llm_budget": {
+            "default": 0,
+            "title": "Llm Budget",
+            "type": "integer"
+          },
           "llm_calls": {
             "default": 0,
             "title": "Llm Calls",
@@ -1865,14 +2054,39 @@
             "title": "Output Tokens",
             "type": "integer"
           },
+          "pause_count": {
+            "default": 0,
+            "title": "Pause Count",
+            "type": "integer"
+          },
+          "planner_calls": {
+            "default": 0,
+            "title": "Planner Calls",
+            "type": "integer"
+          },
           "recoveries": {
             "default": 0,
             "title": "Recoveries",
             "type": "integer"
           },
+          "repair_calls": {
+            "default": 0,
+            "title": "Repair Calls",
+            "type": "integer"
+          },
+          "replanner_calls": {
+            "default": 0,
+            "title": "Replanner Calls",
+            "type": "integer"
+          },
           "replans": {
             "default": 0,
             "title": "Replans",
+            "type": "integer"
+          },
+          "resume_count": {
+            "default": 0,
+            "title": "Resume Count",
             "type": "integer"
           },
           "retries": {
@@ -1885,15 +2099,40 @@
             "title": "Shell Operations",
             "type": "integer"
           },
+          "step_calls": {
+            "default": 0,
+            "title": "Step Calls",
+            "type": "integer"
+          },
           "tool_calls": {
             "default": 0,
             "title": "Tool Calls",
             "type": "integer"
           },
+          "verification_attempts": {
+            "default": 0,
+            "title": "Verification Attempts",
+            "type": "integer"
+          },
+          "verification_duration_ms": {
+            "default": 0.0,
+            "title": "Verification Duration Ms",
+            "type": "number"
+          },
           "verification_failures": {
             "default": 0,
             "title": "Verification Failures",
             "type": "integer"
+          },
+          "verification_polls": {
+            "default": 0,
+            "title": "Verification Polls",
+            "type": "integer"
+          },
+          "verification_success_ms": {
+            "default": 0.0,
+            "title": "Verification Success Ms",
+            "type": "number"
           },
           "vision_calls": {
             "default": 0,
@@ -1956,6 +2195,11 @@
             "title": "Description",
             "type": "string"
           },
+          "duration_ms": {
+            "default": 0.0,
+            "title": "Duration Ms",
+            "type": "number"
+          },
           "evidence": {
             "additionalProperties": true,
             "title": "Evidence",
@@ -1983,6 +2227,11 @@
             "title": "Passed",
             "type": "boolean"
           },
+          "polls": {
+            "default": 1,
+            "title": "Polls",
+            "type": "integer"
+          },
           "step_id": {
             "anyOf": [
               {
@@ -2004,6 +2253,11 @@
               }
             ],
             "title": "Task Id"
+          },
+          "terminal": {
+            "default": false,
+            "title": "Terminal",
+            "type": "boolean"
           }
         },
         "required": [
@@ -2036,6 +2290,18 @@
         ],
         "title": "VerificationSpec",
         "type": "object"
+      },
+      "VerificationStatus": {
+        "description": "Outcome of the task's final verification contract (authoritative for ``verified``).",
+        "enum": [
+          "VERIFIED",
+          "JUDGED",
+          "INCOMPLETE",
+          "FAILED",
+          "NOT_RUN"
+        ],
+        "title": "VerificationStatus",
+        "type": "string"
       }
     }
   },

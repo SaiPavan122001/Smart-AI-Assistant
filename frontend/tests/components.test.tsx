@@ -165,6 +165,32 @@ describe("ResultCard", () => {
     expect(screen.getByText("not verified")).toBeInTheDocument();
   });
 
+  it("never presents the text of a failed task as an answer", () => {
+    render(<ResultCard result={result({
+      status: "FAILED", verified: false, outcome: "DENIED", verification_status: "NOT_RUN", answer_status: "WITHHELD",
+      summary: "Failed: 0/1 steps succeeded.",
+      answer: "The task was not completed: a required action was not approved, so it was not performed.",
+    })} />);
+    expect(screen.queryByText("Answer:")).not.toBeInTheDocument();
+    expect(screen.getByTestId("outcome-statement")).toHaveTextContent(/not approved/);
+    expect(screen.getByText("not verified")).toBeInTheDocument();
+  });
+
+  it("does not show an answer for a failed task even on records without answer_status", () => {
+    render(<ResultCard result={result({ status: "FAILED", verified: false, answer: "The file has been deleted." })} />);
+    expect(screen.queryByText(/has been deleted/)).not.toBeInTheDocument();
+  });
+
+  it("says when a completed task could not provide the requested data", () => {
+    render(<ResultCard result={result({
+      verified: false, verification_status: "INCOMPLETE", answer_status: "answer_unavailable",
+      answer: "The task completed, but the requested response data was unavailable.",
+    })} />);
+    expect(screen.queryByText("Answer:")).not.toBeInTheDocument();
+    expect(screen.getByTestId("answer-unavailable")).toBeInTheDocument();
+    expect(screen.queryByText(/lower assurance/i)).not.toBeInTheDocument();
+  });
+
   it("shows verified results with their checks and usage", () => {
     render(<ResultCard result={result({ verification: [{ id: "v1", step_id: null, kind: "file_exists", passed: true, description: "", message: "file exists", method: "deterministic", evidence: {} }] })} />);
     expect(screen.getByText("verified")).toBeInTheDocument();

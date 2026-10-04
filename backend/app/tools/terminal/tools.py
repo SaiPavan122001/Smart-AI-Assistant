@@ -16,6 +16,7 @@ from app.models.tool import RiskAssessment
 from app.security.commands import CommandAnalysis, analyze_command, build_environment
 from app.tools.base import Tool, ToolOutput
 from app.tools.context import ExecutionContext
+from app.tools.schema import OutputModel
 from app.tools.terminal.runner import run_process
 from app.utils.errors import AgentError, CommandViolation, ErrorCode
 
@@ -44,6 +45,36 @@ def _analyze(ctx: ExecutionContext, command: str, cwd: Path) -> CommandAnalysis:
                 analysis.hard_deny = "Arguments containing shell-special characters cannot be passed to batch-file launchers"
                 break
     return analysis
+
+
+class TerminalOutput(OutputModel):
+    command: str
+    exit_code: int
+    stdout: str
+    stderr: str
+    duration_ms: int
+    timed_out: bool
+    truncated: bool
+    cwd: str
+
+
+class TerminalArtifacts(OutputModel):
+    command: str
+    exit_code: int
+    cwd: str
+    stdout: str
+
+
+class TerminalEnvOutput(OutputModel):
+    os: str
+    os_version: str
+    python: str
+    workspace: str
+    cwd: str
+    allowed_roots: list[str]
+    path_aliases: dict[str, str]
+    tools_installed: dict[str, bool]
+    pid: int
 
 
 class TerminalExecInput(BaseModel):
@@ -123,6 +154,8 @@ async def _execute(
 
 class TerminalExecuteSafe(Tool[TerminalExecInput]):
     name = "terminal_execute_safe"
+    Output = TerminalOutput
+    Artifacts = TerminalArtifacts
     description = (
         "Run ONE allowlisted program (python, pip, node, npm, git, code, pytest, ...) with arguments in a "
         "folder inside an allowed root. No shell: pipes, redirects, &&, ; and %VAR% are rejected. "
@@ -155,6 +188,8 @@ class TerminalQueryInput(BaseModel):
 
 class TerminalQuery(Tool[TerminalQueryInput]):
     name = "terminal_query"
+    Output = TerminalOutput
+    Artifacts = TerminalArtifacts
     description = "Run a strictly read-only query command (versions, git status/log/diff, pip list, where). Never modifies anything."
     capability = Capability.TERMINAL
     Input = TerminalQueryInput
@@ -193,6 +228,7 @@ class TerminalEnvInput(BaseModel):
 
 class TerminalEnvironment(Tool[TerminalEnvInput]):
     name = "terminal_environment"
+    Output = TerminalEnvOutput
     description = "Describe the execution environment: OS, workspace folder, allowed folders, and which developer tools are installed. Contains no secrets."
     capability = Capability.TERMINAL
     Input = TerminalEnvInput

@@ -3,6 +3,15 @@ import type { TaskResult } from "../../types/api";
 
 const TONE = { COMPLETED: "ok", FAILED: "err", TIMED_OUT: "err", CANCELLED: "warn" } as const;
 
+/** How to present `answer`. Older records have no answer_status: only a COMPLETED task may show one. */
+function answerKind(result: TaskResult): "answer" | "unavailable" | "withheld" | "none" {
+  if (result.answer_status === "ANSWERED") return result.status === "COMPLETED" ? "answer" : "none";
+  if (result.answer_status === "answer_unavailable") return "unavailable";
+  if (result.answer_status === "WITHHELD") return "withheld";
+  if (result.answer_status === undefined) return result.status === "COMPLETED" ? "answer" : "none";
+  return "none";
+}
+
 export function ResultCard({ result }: { result: TaskResult }) {
   const tone = TONE[result.status as keyof typeof TONE] ?? "";
   return (
@@ -11,14 +20,28 @@ export function ResultCard({ result }: { result: TaskResult }) {
         <h2 style={{ margin: 0 }}>Result</h2>
         <span className={`badge ${tone}`}>{result.status}</span>
         <VerifiedBadge verified={result.verified} />
-        {!result.verified && result.status === "COMPLETED" && (
+        {!result.verified && result.status === "COMPLETED" && result.verification_status !== "INCOMPLETE" && (
           <span className="muted">Judged by the model only (no machine-checkable criteria) — lower assurance.</span>
+        )}
+        {result.verification_status === "INCOMPLETE" && (
+          <span className="muted">Completed, but the requested response data was unavailable.</span>
         )}
       </div>
       <pre style={{ marginTop: 10 }}>{result.summary}</pre>
-      {result.answer && (
+      {/* Only an ANSWERED result is a success answer. Text on a failed task states what did NOT happen. */}
+      {result.answer && answerKind(result) === "answer" && (
         <div className="banner ok" style={{ marginTop: 10 }}>
           <strong>Answer:</strong> {result.answer}
+        </div>
+      )}
+      {result.answer && answerKind(result) === "unavailable" && (
+        <div className="banner warn" style={{ marginTop: 10 }} data-testid="answer-unavailable">
+          <strong>No answer:</strong> {result.answer}
+        </div>
+      )}
+      {result.answer && answerKind(result) === "withheld" && (
+        <div className="banner err" style={{ marginTop: 10 }} data-testid="outcome-statement">
+          <strong>Not completed:</strong> {result.answer}
         </div>
       )}
       {result.error && <p className="muted">Error code: <code>{result.error.code}</code></p>}

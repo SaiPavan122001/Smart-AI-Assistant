@@ -15,7 +15,7 @@ from typing import Any
 
 from app.config.settings import LimitSettings
 from app.models.plan import PlanStep
-from app.utils.errors import ErrorCode
+from app.utils.errors import NON_RETRYABLE_CODES, SINGLE_REPLAN_CODES, ErrorCode
 from app.utils.ids import utcnow
 
 
@@ -48,17 +48,11 @@ class RecoveryDecision:
 
 
 # Errors where retrying or re-planning can never help (a human decision or a hard limit ended it).
-TERMINAL_CODES = {
-    ErrorCode.APPROVAL_DENIED, ErrorCode.APPROVAL_TIMEOUT, ErrorCode.INJECTION_BLOCKED, ErrorCode.CANCELLED,
-    ErrorCode.KILL_SWITCH, ErrorCode.LIMIT_EXCEEDED, ErrorCode.LOOP_DETECTED, ErrorCode.NOT_AVAILABLE, ErrorCode.UNKNOWN_TOOL,
-}  # fmt: skip
-# Policy blocks: a compliant alternative may exist, but only one re-plan is worth trying.
-POLICY_CODES = {
-    ErrorCode.POLICY_DENIED,
-    ErrorCode.PATH_BLOCKED,
-    ErrorCode.COMMAND_BLOCKED,
-    ErrorCode.URL_BLOCKED,
-}
+# The classification itself lives in app.utils.errors (one source for recovery AND the runner).
+TERMINAL_CODES = NON_RETRYABLE_CODES
+# Not retryable, but one re-plan may find a compliant alternative: policy blocks, an automation
+# block (use another source), an unavailable search provider, a defective plan contract.
+POLICY_CODES = SINGLE_REPLAN_CODES
 # Failures that happen *before* any side effect, so repeating the same call is safe.
 PRE_EFFECT_CODES = {
     ErrorCode.STALE_REFERENCE, ErrorCode.ELEMENT_NOT_FOUND, ErrorCode.NAVIGATION_FAILED, ErrorCode.LLM_ERROR,
@@ -83,10 +77,6 @@ _SEQUENCES: dict[ErrorCode, list[Strategy]] = {
     ErrorCode.ALREADY_EXISTS: [Strategy.ADAPTIVE, Strategy.REPLAN],
     ErrorCode.LOW_CONFIDENCE: [Strategy.ADAPTIVE],
     ErrorCode.VERIFICATION_FAILED: [Strategy.REFRESH_RETRY, Strategy.ADAPTIVE, Strategy.REPLAN],
-    ErrorCode.PLAN_INVALID: [Strategy.REPLAN],
-    ErrorCode.BLOCKED_BY_SITE: [
-        Strategy.REPLAN
-    ],  # retrying the same page cannot help; use another source
 }
 _DEFAULT = [Strategy.ADAPTIVE, Strategy.REPLAN]
 
@@ -131,6 +121,15 @@ class RecoveryEngine:
             return RecoveryDecision(
                 Strategy.FAIL, f"{code.value} is final; no recovery is attempted"
             )
+        if code in SINGLE_REPLAN_CODES and any(
+            h.strategy is Strategy.REPLAN and h.error_code == code.value for h in history
+        ):
+            # The one alternative this condition is allowed was already tried in this task:
+            # no refresh, no retry, no restart, no second re-plan.
+            return RecoveryDecision(
+                Strategy.FAIL,
+                f"{code.value} happened again after a re-plan; it is not retried",
+            )
         if len(mine) >= self._limits.max_retries_per_step:
             return RecoveryDecision(
                 Strategy.FAIL,
@@ -144,7 +143,8 @@ class RecoveryEngine:
         idx = len(mine)
 
         # choose the first strategy in the table that is still allowed
-        for strategy in [*seq[idx:], Strategy.FAIL]:
+        candidates = seq if code in POLICY_CODES else seq[idx:]
+        for strategy in [*candidates, Strategy.FAIL]:
             decision = self._materialise(
                 strategy, step, code, message, mine, replans_used=replans_used,
                 tool_idempotent=tool_idempotent, phase=phase, used=used,

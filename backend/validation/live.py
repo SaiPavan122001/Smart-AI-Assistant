@@ -138,8 +138,38 @@ async def run_scenario(env: Env, sc: Scenario) -> dict[str, Any]:
         "expected_status": sc.expect_status,
         "status_ok": done.status.value == sc.expect_status,
         "verified": bool(res and res.verified),
+        "outcome": res.outcome.value if res else None,
+        "verification_status": res.verification_status.value if res else None,
+        "answer_status": res.answer_status.value if res else None,
         "summary": (res.summary if res else "")[:600],
         "answer": (res.answer if res else None),
+        "calls_by_purpose": {
+            "planner": u.planner_calls,
+            "replanner": u.replanner_calls,
+            "repair": u.repair_calls,
+            "step": u.step_calls,
+            "judge": u.judge_calls,
+            "answer_generation": u.answer_generation_calls,
+        },
+        "replans": u.replans,
+        "verification": {
+            "attempts": u.verification_attempts,
+            "polls": u.verification_polls,
+            "duration_s": round(u.verification_duration_ms / 1000, 2),
+            "success_time_s": round(u.verification_success_ms / 1000, 2),
+            "failures": u.verification_failures,
+        },
+        "pause_resume_events": [
+            e.type.value if e.type.value != "status_changed" else f"status:{e.data.get('status')}"
+            for e in events
+            if e.type.value
+            in ("pause_requested", "pause_completed", "resume_requested", "resume_completed")
+            or (
+                e.type.value == "status_changed"
+                and "PAUSED" in (e.data.get("status"), e.data.get("previous"))
+            )
+        ],
+        "plan_invalid_details": (res.error.details.get("problems") if res and res.error else None),
         "error": (res.error.message if res and res.error else None),
         "llm_calls": u.llm_calls,
         "llm_budget": sc.max_llm_calls,
@@ -199,10 +229,24 @@ async def hook_pause_resume(env: Env, task: Task) -> None:
         await asyncio.sleep(0.01)
     await c.runtime.pause(task.id)
     t = await c.repo.get_task(task.id)
+    for _ in range(3000):  # an in-flight call may finish first; then the task parks as PAUSED
+        t = await c.repo.get_task(task.id)
+        if t is None or t.status.value == "PAUSED" or t.status.is_terminal:
+            break
+        await asyncio.sleep(0.01)
     n0 = len(await c.repo.list_tool_calls(task.id))
+    llm0 = t.usage.llm_calls if t else -1
+    e0 = len(await c.repo.list_events(task.id))
     await asyncio.sleep(5)
     n1 = len(await c.repo.list_tool_calls(task.id))
-    log.update(paused_flag=bool(t and t.paused), calls_started_while_paused=n1 - n0)
+    t1 = await c.repo.get_task(task.id)
+    log.update(
+        paused_flag=bool(t and t.paused),
+        persisted_status_while_paused=t1.status.value if t1 else None,
+        calls_started_while_paused=n1 - n0,
+        llm_calls_while_paused=(t1.usage.llm_calls - llm0) if t1 else None,
+        events_while_paused=len(await c.repo.list_events(task.id)) - e0,
+    )
     await c.runtime.resume(task.id)
 
 

@@ -37,6 +37,7 @@ from app.tools.base import Tool, ToolOutput
 from app.tools.context import ExecutionContext
 from app.tools.loop_guard import Verdict, report_loop
 from app.tools.registry import ToolRegistry
+from app.tools.schema import contract_problems
 from app.utils.errors import (
     AgentError,
     ErrorCode,
@@ -447,6 +448,22 @@ class ToolRouter:
         untrusted = (
             output.untrusted if output.untrusted is not None else spec.returns_external_content
         )
+        # Plans are validated against the tool's declared output: what it returns must match it.
+        drift = contract_problems(tool.Output, output.data) + [
+            f"artifacts.{x}" for x in contract_problems(tool.Artifacts, output.artifacts)
+        ]
+        if drift:
+            log.warning(
+                "tool output violates its contract", extra={"tool": call.tool, "problems": drift}
+            )
+            if ctx.settings.env == "test":  # a test run must fail loudly on schema drift
+                return ToolResult(
+                    tool_call_id=call.id, tool=call.tool, ok=False, duration_ms=duration_ms, attempts=attempts,
+                    error=ErrorInfo(
+                        code=ErrorCode.INTERNAL,
+                        message=f"{call.tool} output does not match its declared schema: {'; '.join(drift)}",
+                    ),
+                )  # fmt: skip
         data = redact(output.data)
         summary = redact_text(output.summary)
         result = ToolResult(

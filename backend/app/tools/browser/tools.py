@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -14,6 +15,7 @@ from app.tools.base import Tool, ToolOutput
 from app.tools.browser.elements import SENSITIVE_ACTION
 from app.tools.browser.session import BrowserSession
 from app.tools.context import ExecutionContext
+from app.tools.schema import OutputModel
 from app.utils.errors import AgentError, ErrorCode, PolicyViolation
 
 _RETRY_STALE = RetryPolicy(
@@ -47,6 +49,95 @@ def _check_url(ctx: ExecutionContext, url: str) -> str:
     )
 
 
+# ----------------------------------------------------------------------------- output contracts
+class PageState(OutputModel):
+    url: str
+    title: str
+    tab: str | None = None
+    tabs: int = Field(description="number of open tabs")
+    navigation: str = Field(description="idle | loading | loaded | failed")
+
+
+class NavOutput(PageState):
+    status: int | None = Field(default=None, description="HTTP status of the navigation")
+
+
+class UrlArtifacts(OutputModel):
+    url: str
+
+
+class FindMatch(OutputModel):
+    ref: str
+    role: str
+    name: str
+    score: float
+    disabled: bool
+    href: str | None = None
+
+
+class FindOutput(OutputModel):
+    query: str
+    matches: list[FindMatch]
+    ambiguous: bool
+    total_interactive: int
+    page: PageState
+
+
+class ReadOutput(PageState):
+    mode: str | None = None
+    text: str | None = Field(default=None, description="mode=text: visible page text")
+    total_chars: int | None = Field(default=None, description="mode=text")
+    aria: str | None = Field(default=None, description="mode=aria: accessibility tree")
+    truncated: bool | None = None
+    elements: list[str] | None = Field(
+        default=None, description="mode=elements|links|forms: one line per control"
+    )
+    total: int | None = Field(default=None, description="mode=elements|links|forms")
+    unchanged: bool | None = Field(
+        default=None, description="true when the page did not change since the last read"
+    )
+
+
+class ClickOutput(PageState):
+    navigated: bool
+
+
+class ClickArtifacts(OutputModel):
+    url: str
+    title: str
+
+
+class DownloadOutput(OutputModel):
+    path: str
+    filename: str
+    size: int
+    url: str | None = None
+    content_type: str | None = None
+
+
+class DownloadArtifacts(OutputModel):
+    path: str
+    size: int
+    kind: str
+    url: str | None = None
+
+
+class UploadOutput(OutputModel):
+    uploaded: str
+
+
+class TabInfo(OutputModel):
+    id: str
+    url: str
+    title: str
+    active: bool
+
+
+class TabsOutput(OutputModel):
+    tabs: list[TabInfo]
+    active: str | None = None
+
+
 class Target(BaseModel):
     ref: str | None = Field(
         default=None, description="Element ref from browser_find/browser_read, e.g. 'e42'"
@@ -74,7 +165,45 @@ async def _raise_if_blocked(session: Any) -> None:
         raise AgentError(
             f"The site is showing a bot check ({reason}) at {st['url']}. I will not try to solve or bypass it. "
             "For information lookups use the web_search tool, then open a result with browser_open.",
-            code=ErrorCode.BLOCKED_BY_SITE, details={"url": st["url"], "reason": reason},
+            code=ErrorCode.SEARCH_AUTOMATION_BLOCKED,
+            details={"url": st["url"], "reason": reason, "provider_error": "blocked_by_site"},
+        )  # fmt: skip
+
+
+def _page_key(url: str | None) -> str:
+    """URL without its fragment: the identity of a page for 'do not go back there'."""
+    try:
+        parts = urlsplit(url or "")
+    except ValueError:
+        return ""
+    if not parts.hostname:
+        return ""
+    return urlunsplit((parts.scheme.lower(), parts.netloc.lower(), parts.path, parts.query, ""))
+
+
+async def _guarded(ctx: ExecutionContext, session: Any, requested: str | None = None) -> None:
+    """Detect a bot check; remember the page so this task never goes back to it."""
+    try:
+        await _raise_if_blocked(session)
+    except AgentError as exc:
+        blocked = ctx.extras.setdefault("blocked_pages", {})
+        for url in (requested, str(exc.details.get("url", ""))):
+            if key := _page_key(url):
+                blocked[key] = str(exc.details.get("reason", ""))
+        raise
+
+
+def _refuse_blocked_page(ctx: ExecutionContext, url: str | None) -> None:
+    """A page that already showed a bot check in this task is not requested again (no retry,
+    no refresh, no restart): the block is final for it."""
+    key = _page_key(url)
+    reason = ctx.extras.get("blocked_pages", {}).get(key) if key else None
+    if reason is not None:
+        raise AgentError(
+            f"{url} already showed a bot check ({reason}) in this task. It is not retried. "
+            "Use the web_search tool or another source.",
+            code=ErrorCode.SEARCH_AUTOMATION_BLOCKED,
+            details={"url": url, "reason": reason, "provider_error": "blocked_by_site", "repeated": True},
         )  # fmt: skip
 
 
@@ -85,6 +214,7 @@ class OpenInput(BaseModel):
 
 class BrowserOpen(Tool[OpenInput]):
     name = "browser_open"
+    Output = PageState
     establishes_state = True
     description = "Open the browser (isolated session for this task), optionally at a URL, optionally in a new tab."
     capability = Capability.BROWSER
@@ -104,13 +234,14 @@ class BrowserOpen(Tool[OpenInput]):
         )
 
     async def run(self, args: OpenInput, ctx: ExecutionContext) -> ToolOutput:
+        _refuse_blocked_page(ctx, args.url)
         session = await _session(ctx, need_page=False)
         if not session.has_page or args.new_tab:
             await session.open_tab(args.url)
         elif args.url:
             await session.navigate(args.url)
         await session.refresh_state()
-        await _raise_if_blocked(session)
+        await _guarded(ctx, session, args.url)
         st = session.compact_state()
         return ToolOutput(
             data=st,
@@ -125,6 +256,8 @@ class NavInput(BaseModel):
 
 class BrowserNavigate(Tool[NavInput]):
     name = "browser_navigate"
+    Output = NavOutput
+    Artifacts = UrlArtifacts
     description = "Navigate the active tab to an http(s) URL."
     capability = Capability.BROWSER
     Input = NavInput
@@ -142,13 +275,14 @@ class BrowserNavigate(Tool[NavInput]):
         )
 
     async def run(self, args: NavInput, ctx: ExecutionContext) -> ToolOutput:
+        _refuse_blocked_page(ctx, args.url)
         session = await _session(ctx, need_page=False)
         if not session.has_page:
             await session.open_tab(args.url)
             st = session.compact_state()
         else:
             st = await session.navigate(args.url)
-        await _raise_if_blocked(session)
+        await _guarded(ctx, session, args.url)
         return ToolOutput(
             data=st,
             summary=f"Navigated: {st['title'] or '(no title)'} — {st['url']}",
@@ -166,6 +300,7 @@ class FindInput(BaseModel):
 
 class BrowserFind(Tool[FindInput]):
     name = "browser_find"
+    Output = FindOutput
     description = (
         "Find interactive elements matching a description using the page's DOM/accessibility structure. "
         'Returns a few candidates with stable refs (e.g. button "Download" ref=e42) instead of the whole page.'
@@ -207,6 +342,7 @@ class ReadInput(BaseModel):
 
 class BrowserRead(Tool[ReadInput]):
     name = "browser_read"
+    Output = ReadOutput
     description = "Read the current page in a targeted way (text, accessibility tree, or interactive elements). Prefer browser_find for single targets."
     capability = Capability.BROWSER
     Input = ReadInput
@@ -243,6 +379,8 @@ class ClickInput(Target):
 
 class BrowserClick(Tool[ClickInput]):
     name = "browser_click"
+    Output = ClickOutput
+    Artifacts = ClickArtifacts
     description = "Click an element by ref (from browser_find) or by natural-language query. Re-resolves stale refs automatically."
     capability = Capability.BROWSER
     Input = ClickInput
@@ -270,7 +408,7 @@ class BrowserClick(Tool[ClickInput]):
         session = await _session(ctx)
         loc, el = await session.resolve_target(ref=args.ref, query=args.query, role=args.role)
         result = await session.click(loc, el)
-        await _raise_if_blocked(session)
+        await _guarded(ctx, session)
         label = el.name if el else (args.query or args.ref)
         return ToolOutput(
             data=result, summary=f'Clicked {el.role if el else "element"} "{(label or "")[:60]}" → {result["url"]}',
@@ -288,6 +426,7 @@ class TypeInput(Target):
 
 class BrowserType(Tool[TypeInput]):
     name = "browser_type"
+    Output = PageState
     description = "Type text into an input/textarea by ref or query. Set submit=true to press Enter (e.g. to run a search)."
     capability = Capability.BROWSER
     Input = TypeInput
@@ -318,7 +457,7 @@ class BrowserType(Tool[TypeInput]):
         )
         result = await session.type_text(loc, args.text, clear=args.clear, submit=args.submit)
         if args.submit:
-            await _raise_if_blocked(session)
+            await _guarded(ctx, session)
         masked = bool(el and el.sensitive)
         shown = "***" if masked else (args.text if len(args.text) <= 60 else args.text[:57] + "...")
         return ToolOutput(
@@ -334,6 +473,7 @@ class SelectInput(Target):
 
 class BrowserSelect(Tool[SelectInput]):
     name = "browser_select"
+    Output = PageState
     description = "Choose an option in a <select>/dropdown by visible label or value."
     capability = Capability.BROWSER
     Input = SelectInput
@@ -377,7 +517,8 @@ class DownloadInput(BaseModel):
 
 class BrowserDownload(Tool[DownloadInput]):
     name = "browser_download"
-    returns = "path, filename, size, url"
+    Output = DownloadOutput
+    Artifacts = DownloadArtifacts
     description = "Download a file to an allowed folder, via direct URL (HTTP API) or by clicking a download control. Executable file types are blocked."
     capability = Capability.BROWSER
     Input = DownloadInput
@@ -417,6 +558,7 @@ class UploadInput(Target):
 
 class BrowserUpload(Tool[UploadInput]):
     name = "browser_upload"
+    Output = UploadOutput
     description = "Upload a local file through a file input. Disabled unless explicitly enabled; always requires approval."
     capability = Capability.BROWSER
     Input = UploadInput
@@ -453,6 +595,7 @@ class TabsInput(BaseModel):
 
 class BrowserTabs(Tool[TabsInput]):
     name = "browser_tabs"
+    Output = TabsOutput
     description = "List, switch, close or open browser tabs."
     capability = Capability.BROWSER
     Input = TabsInput
@@ -493,6 +636,7 @@ class NoInput(BaseModel):
 
 class BrowserBack(Tool[NoInput]):
     name = "browser_back"
+    Output = PageState
     description = "Go back in the active tab's history."
     capability = Capability.BROWSER
     Input = NoInput
@@ -505,6 +649,7 @@ class BrowserBack(Tool[NoInput]):
 
 class BrowserForward(Tool[NoInput]):
     name = "browser_forward"
+    Output = PageState
     description = "Go forward in the active tab's history."
     capability = Capability.BROWSER
     Input = NoInput

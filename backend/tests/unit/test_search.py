@@ -160,7 +160,7 @@ async def test_router_reports_why_when_every_provider_fails_and_never_mentions_b
     )  # type: ignore[list-item]
     with pytest.raises(AgentError) as ei:
         await r.search("q")
-    assert ei.value.code is ErrorCode.NOT_AVAILABLE
+    assert ei.value.code is ErrorCode.SEARCH_UNAVAILABLE
     assert (
         "brave: auth" in ei.value.message and "duckduckgo: error: RuntimeError" in ei.value.message
     )
@@ -232,7 +232,7 @@ async def test_web_search_without_a_router_or_with_all_providers_down_fails_hone
     r = await env.router.execute(
         ToolCall(tool="web_search", args={"query": "q"}, rationale="t"), env.ctx()
     )
-    assert not r.ok and r.error and r.error.code is ErrorCode.NOT_AVAILABLE
+    assert not r.ok and r.error and r.error.code is ErrorCode.SEARCH_UNAVAILABLE
     env2 = search_env(
         tmp_path, SearchRouter([Fake("duckduckgo", SearchError("blocked", "challenge"))])
     )  # type: ignore[list-item]
@@ -247,7 +247,10 @@ def test_web_search_is_in_the_planner_catalog_with_its_output_shape(tmp_path: Pa
 
     cat = tool_catalog(make_env(tmp_path).router.registry)
     line = next(ln for ln in cat.splitlines() if ln.startswith("- web_search("))
-    assert "results[{title,url,snippet}]" in line and "max_results:integer[1..20]" in line
+    assert (
+        "results:[{title:string, url:string, snippet:string" in line
+        and "max_results:integer[1..20]" in line
+    )
 
 
 # ----------------------------------------------------------------------------- blocked-page classification
@@ -303,11 +306,21 @@ def test_recovery_for_blocked_pages_is_one_replan_then_fail_never_a_retry() -> N
     eng = RecoveryEngine(LimitSettings())
     st = PlanStep(id="s1", title="search", tool="browser_type", args={"query": "q"})
     first = eng.decide(
-        st, ErrorCode.BLOCKED_BY_SITE, "bot check", [], replans_used=0, tool_idempotent=False
+        st,
+        ErrorCode.SEARCH_AUTOMATION_BLOCKED,
+        "bot check",
+        [],
+        replans_used=0,
+        tool_idempotent=False,
     )
     assert first.strategy is Strategy.REPLAN
     none_left = eng.decide(
-        st, ErrorCode.BLOCKED_BY_SITE, "bot check", [], replans_used=2, tool_idempotent=False
+        st,
+        ErrorCode.SEARCH_AUTOMATION_BLOCKED,
+        "bot check",
+        [],
+        replans_used=2,
+        tool_idempotent=False,
     )
     assert none_left.strategy is Strategy.FAIL
 
@@ -324,7 +337,7 @@ async def test_browser_stops_on_a_challenge_page_and_does_not_poke_it(tmp_path: 
                 ToolCall(tool="browser_open", args={"url": site.base + "/captcha"}, rationale="t"),
                 ctx,
             )
-            assert not r.ok and r.error and r.error.code is ErrorCode.BLOCKED_BY_SITE
+            assert not r.ok and r.error and r.error.code is ErrorCode.SEARCH_AUTOMATION_BLOCKED
             assert (
                 "will not try to solve or bypass" in r.error.message
                 and "web_search" in r.error.message
@@ -379,7 +392,7 @@ async def test_blocked_search_falls_back_to_web_search_then_opens_the_result(
         assert names == [("browser_open", False), ("web_search", True), ("browser_open", True)]
         assert h.llm.purposes.count("replan") == 1 and "recovery_started" in await h.events(task.id)
         blocked = calls[0].result.error  # type: ignore[union-attr]
-        assert blocked and blocked.code is ErrorCode.BLOCKED_BY_SITE
+        assert blocked and blocked.code is ErrorCode.SEARCH_AUTOMATION_BLOCKED
         assert not any(c.call.tool in ("browser_click", "browser_type") for c in calls), (
             "the challenge page was never interacted with"
         )

@@ -35,7 +35,8 @@
 | `recovery_started`, `recovery_completed` | `strategy`, `error_code`, `phase`, `attempt`, human `reason` |
 | `verification_started`, `verification_completed` | `scope` (`step sN`/`task`), `passed`, `results[]`, `method` |
 | `usage_updated` | the `UsageStats` snapshot |
-| `task_paused`, `task_resumed`, `limit_reached`, `kill_switch` | control events |
+| `pause_requested`, `pause_completed`, `resume_requested`, `resume_completed` | pause lifecycle, always in this order around the `status_changed` to/from `PAUSED` ([pause-resume](../pause-resume.md)); `task_paused`/`task_resumed` are legacy names, no longer emitted |
+| `limit_reached`, `kill_switch` | control events |
 | `task_completed`, `task_failed`, `task_cancelled`, `task_timed_out` | `result` (`TaskResult`) |
 
 ## Reconstructing the timeline

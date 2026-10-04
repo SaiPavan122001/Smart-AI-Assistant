@@ -202,13 +202,24 @@ export function reduceEvent(state: TaskView, ev: ExecutionEvent): TaskView {
     case "usage_updated":
       s.usage = d as unknown as UsageStats;
       break;
-    case "task_paused":
+    // Pause lifecycle: requested -> (status PAUSED) -> completed; resume: requested -> (status restored) -> completed.
+    // `paused` covers the whole span, so the UI never offers "Pause" or shows a plain running state in between.
+    case "pause_requested":
       s.paused = true;
-      s.timeline = upsert(s.timeline, item(ev, `pause:${ev.seq}`, "info", "Paused", ev.message));
+      s.timeline = upsert(s.timeline, item(ev, `pause:${ev.seq}`, "info", "Pause requested", ev.message));
       break;
-    case "task_resumed":
+    case "pause_completed":
+    case "task_paused": // legacy event name
+      s.paused = true;
+      s.timeline = upsert(s.timeline, item(ev, `paused:${ev.seq}`, "info", "Paused", ev.message));
+      break;
+    case "resume_requested":
+      s.timeline = upsert(s.timeline, item(ev, `resume:${ev.seq}`, "info", "Resume requested"));
+      break;
+    case "resume_completed":
+    case "task_resumed": // legacy event name
       s.paused = false;
-      s.timeline = upsert(s.timeline, item(ev, `resume:${ev.seq}`, "info", "Resumed"));
+      s.timeline = upsert(s.timeline, item(ev, `resumed:${ev.seq}`, "info", "Resumed"));
       break;
     case "limit_reached":
       s.timeline = upsert(s.timeline, item(ev, `limit:${ev.seq}`, "error", "Resource limit reached", ev.message));
@@ -272,6 +283,7 @@ export const STATUS_LABEL: Record<TaskStatus, string> = {
   EXECUTING: "Executing",
   RECOVERING: "Recovering from a problem",
   VERIFYING: "Verifying the result",
+  PAUSED: "Paused: nothing runs until you resume",
   COMPLETED: "Completed",
   FAILED: "Failed",
   CANCELLED: "Cancelled",

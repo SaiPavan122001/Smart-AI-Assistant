@@ -237,7 +237,8 @@ def test_templates_support_length_and_catalog_documents_output_shapes(env: Env) 
             "{{steps.s1.data.results.length}}", scope
         )  # a wrong field is still an error, not silently 0
     cat = tool_catalog(env.router.registry)
-    assert "-> data: matches[" in cat and "fs_search" in cat
+    line = next(ln for ln in cat.splitlines() if ln.startswith("- fs_search("))
+    assert "-> data: {root:string, matches:[{name:string" in line and "path:string" in line
 
 
 def test_adaptive_steps_see_fenced_data_of_earlier_steps() -> None:

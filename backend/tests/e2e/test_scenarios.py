@@ -531,7 +531,12 @@ async def test_pause_and_resume_hold_the_next_tool_call(env: Env) -> None:
     done = await env.repo.get_task(task.id)
     assert done and done.status == TaskStatus.COMPLETED and (env.desktop / "b").exists()
     types = await h.events(task.id)
-    assert "task_paused" in types and "task_resumed" in types
+    order = [
+        t
+        for t in types
+        if t in ("pause_requested", "pause_completed", "resume_requested", "resume_completed")
+    ]
+    assert order == ["pause_requested", "pause_completed", "resume_requested", "resume_completed"]
 
 
 async def test_replan_replaces_a_broken_plan_and_completes(env: Env) -> None:

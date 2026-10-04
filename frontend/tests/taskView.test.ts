@@ -86,6 +86,29 @@ describe("taskView reducer", () => {
     expect(v.timeline.at(-1)?.title).toBe("EMERGENCY STOP");
   });
 
+  it("tracks the pause lifecycle so a paused task is never shown as running", () => {
+    resetSeq();
+    const events = [
+      ev("status_changed", { data: { status: "EXECUTING", previous: "PLANNING" } }),
+      ev("pause_requested"),
+    ];
+    let v = buildTaskView("task_1", events);
+    expect(v.paused).toBe(true); // requested: the in-flight call is finishing
+    expect(v.status).toBe("EXECUTING");
+    v = reduceEvent(v, ev("status_changed", { data: { status: "PAUSED", previous: "EXECUTING" } }));
+    v = reduceEvent(v, ev("pause_completed"));
+    expect(v.status).toBe("PAUSED");
+    expect(v.paused).toBe(true);
+    v = reduceEvent(v, ev("resume_requested"));
+    expect(v.status).toBe("PAUSED"); // still paused until the runtime restored the state
+    expect(v.paused).toBe(true);
+    v = reduceEvent(v, ev("status_changed", { data: { status: "EXECUTING", previous: "PAUSED" } }));
+    v = reduceEvent(v, ev("resume_completed"));
+    expect(v.status).toBe("EXECUTING");
+    expect(v.paused).toBe(false);
+    expect(v.timeline.map((t) => t.title)).toEqual(["Pause requested", "Paused", "Resume requested", "Resumed"]);
+  });
+
   it("handles failed, skipped and verification-failure paths", () => {
     resetSeq();
     const v = buildTaskView("task_1", [

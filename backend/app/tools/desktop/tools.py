@@ -14,6 +14,7 @@ from app.tools.context import ExecutionContext
 from app.tools.desktop import keys as keymod
 from app.tools.desktop.models import UIElement, WindowSel
 from app.tools.desktop.service import DesktopService
+from app.tools.schema import OutputModel
 from app.utils.errors import AgentError, ErrorCode, PolicyViolation
 
 _RETRY_STALE = RetryPolicy(
@@ -30,6 +31,119 @@ def _svc(ctx: ExecutionContext) -> DesktopService:
             code=ErrorCode.NOT_AVAILABLE,
         )
     return svc
+
+
+# ----------------------------------------------------------------------------- output contracts
+class WindowBrief(OutputModel):
+    handle: int
+    title: str
+    process: str
+    active: bool
+    minimized: bool
+
+
+class WindowsOutput(OutputModel):
+    windows: list[WindowBrief]
+
+
+class ActiveWindow(OutputModel):
+    title: str
+    process: str
+    handle: int | None = None
+
+
+class ActiveWindowOutput(OutputModel):
+    window: ActiveWindow | None = None
+
+
+class ElementMatch(OutputModel):
+    ref: str
+    role: str
+    name: str
+    automation_id: str
+    enabled: bool
+    score: float
+
+
+class FindElementOutput(OutputModel):
+    window: str
+    matches: list[ElementMatch]
+    ambiguous: bool
+    ui_quality: str
+
+
+class DesktopReadOutput(OutputModel):
+    # mode=tree
+    window: str | None = Field(default=None, description="mode=tree: window title")
+    process: str | None = Field(default=None, description="mode=tree")
+    quality: str | None = Field(default=None, description="mode=tree: UIA exposure quality")
+    truncated: bool | None = Field(default=None, description="mode=tree")
+    tree: list[str] | None = Field(default=None, description="mode=tree: one line per control")
+    # mode=element
+    element: str | None = Field(default=None, description="mode=element: the control")
+    name: str | None = Field(default=None, description="mode=element")
+    role: str | None = Field(default=None, description="mode=element")
+    value: Any = Field(default=None, description="mode=element: current value, if it has one")
+    toggle_state: Any = Field(default=None, description="mode=element")
+    enabled: bool | None = Field(default=None, description="mode=element")
+    focused: bool | None = Field(default=None, description="mode=element")
+    selected: bool | None = Field(default=None, description="mode=element")
+    # mode=element (window text of the control) and mode=text (visible text of the window)
+    text: str | None = Field(default=None, description="mode=text or mode=element")
+    chars: int | None = Field(default=None, description="mode=text")
+
+
+class DesktopClickOutput(OutputModel):
+    method: str
+    element: str | None = None
+    point: list[int] | None = Field(default=None, description="vision_ref clicks only")
+    label: str | None = Field(default=None, description="vision_ref clicks only")
+
+
+class ElementArtifacts(OutputModel):
+    element: str | None = None  # absent for coordinate (vision_ref) clicks
+
+
+class DesktopTypeOutput(OutputModel):
+    method: str
+    element: str
+
+
+class DesktopKeyOutput(OutputModel):
+    keys: str
+    window: str | None = None
+
+
+class DesktopFocusOutput(OutputModel):
+    window: str
+    process: str
+
+
+class DesktopScrollOutput(OutputModel):
+    method: str
+
+
+class LaunchedWindow(OutputModel):
+    handle: int
+    title: str
+    process: str
+    pid: int
+    active: bool
+    minimized: bool
+    rect: dict[str, int]
+
+
+class LaunchOutput(OutputModel):
+    pid: int | None = None
+    window: LaunchedWindow | None = Field(
+        default=None, description="the app's window (null if none appeared yet)"
+    )
+    reused: bool | None = Field(default=None, description="true if the app was already open")
+
+
+class LaunchArtifacts(OutputModel):
+    app: str
+    pid: int | None = None
 
 
 class WinArgs(BaseModel):
@@ -92,6 +206,7 @@ class NoArgs(BaseModel):
 
 class DesktopWindows(Tool[NoArgs]):
     name = "desktop_windows"
+    Output = WindowsOutput
     description = "List visible top-level windows (title, process, active/minimized)."
     capability = Capability.DESKTOP
     Input = NoArgs
@@ -122,6 +237,7 @@ class DesktopWindows(Tool[NoArgs]):
 
 class DesktopActiveWindow(Tool[NoArgs]):
     name = "desktop_active_window"
+    Output = ActiveWindowOutput
     description = "Return the currently focused window."
     capability = Capability.DESKTOP
     Input = NoArgs
@@ -164,6 +280,7 @@ class FindInput(WinArgs):
 
 class DesktopFindElement(Tool[FindInput]):
     name = "desktop_find_element"
+    Output = FindElementOutput
     description = "Find UI controls in a window via Windows UI Automation (buttons, text boxes, menus, lists...). Returns refs, roles, names and automation ids."
     capability = Capability.DESKTOP
     Input = FindInput
@@ -228,6 +345,7 @@ class ReadInput(ElementArgs):
 
 class DesktopRead(Tool[ReadInput]):
     name = "desktop_read"
+    Output = DesktopReadOutput
     description = "Read desktop state structurally: the control tree of a window, one element's value/state, or visible text."
     capability = Capability.DESKTOP
     Input = ReadInput
@@ -293,6 +411,8 @@ class ClickInput(ElementArgs):
 
 class DesktopClick(Tool[ClickInput]):
     name = "desktop_click"
+    Output = DesktopClickOutput
+    Artifacts = ElementArtifacts
     description = "Click a control via UI Automation (Invoke/Toggle/Select patterns, then element-relative mouse). vision_ref uses coordinates from a confident vision result as a last resort."
     capability = Capability.DESKTOP
     Input = ClickInput
@@ -360,6 +480,7 @@ class TypeInput(ElementArgs):
 
 class DesktopType(Tool[TypeInput]):
     name = "desktop_type"
+    Output = DesktopTypeOutput
     description = "Type text into a specific text control (set via UI Automation value pattern; keyboard only if needed). Terminals are blocked."
     capability = Capability.DESKTOP
     Input = TypeInput
@@ -410,6 +531,7 @@ class KeyInput(WinArgs):
 
 class DesktopKey(Tool[KeyInput]):
     name = "desktop_key"
+    Output = DesktopKeyOutput
     description = "Send ONE validated key combination to the focused window (e.g. Ctrl+S). Terminals and the Windows key are blocked."
     capability = Capability.DESKTOP
     Input = KeyInput
@@ -451,6 +573,7 @@ class FocusInput(WinArgs):
 
 class DesktopFocus(Tool[FocusInput]):
     name = "desktop_focus"
+    Output = DesktopFocusOutput
     description = "Bring a window to the foreground (restores it if minimized)."
     capability = Capability.DESKTOP
     Input = FocusInput
@@ -481,6 +604,7 @@ class ScrollInput(ElementArgs):
 
 class DesktopScroll(Tool[ScrollInput]):
     name = "desktop_scroll"
+    Output = DesktopScrollOutput
     description = (
         "Scroll a control or window (UI Automation scroll pattern, mouse wheel as fallback)."
     )
@@ -524,6 +648,8 @@ class LaunchInput(BaseModel):
 
 class DesktopLaunch(Tool[LaunchInput]):
     name = "desktop_launch"
+    Output = LaunchOutput
+    Artifacts = LaunchArtifacts
     establishes_state = True
     description = (
         "Launch an allowlisted application (optionally opening a folder/file inside allowed roots)."

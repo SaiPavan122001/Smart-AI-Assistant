@@ -112,6 +112,8 @@ class OpenAIProvider(LLMProvider):
                 }
                 for t in request.tools
             ]
+            if caps.supports_parallel_tools:
+                payload["parallel_tool_calls"] = True  # several predictable actions per round trip
             if request.tool_choice == "any":
                 payload["tool_choice"] = "required"
             elif request.tool_choice and request.tool_choice != "auto":

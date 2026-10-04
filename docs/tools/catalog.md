@@ -27,6 +27,10 @@ Copy a file/folder within allowed roots. Fails if the destination exists unless 
 | `dst` | string | yes | Destination file path, or an existing folder to move into |
 | `overwrite` | boolean | no |  |
 
+Output `data`: `src:string, dst:string`
+
+Output `artifacts`: `src:string, dst:string`
+
 ### `fs_create`
 
 Create a folder (kind='dir') or a text file (kind='file', with content) inside an allowed root. Parent folders are created. Existing files are only replaced when overwrite=true.
@@ -38,6 +42,10 @@ Create a folder (kind='dir') or a text file (kind='file', with content) inside a
 | `content` | string | no |  |
 | `overwrite` | boolean | no |  |
 
+Output `data`: `path:string, kind:string, created?:boolean, bytes?:integer`
+
+Output `artifacts`: `path:string, kind:string, bytes?:integer`
+
 ### `fs_delete`
 
 Delete a file or folder (moved to the Recycle Bin, recoverable). Always requires approval.
@@ -46,6 +54,10 @@ Delete a file or folder (moved to the Recycle Bin, recoverable). Always requires
 |---|---|---|---|
 | `path` | string | yes |  |
 | `recursive` | boolean | no | Required to delete a non-empty folder |
+
+Output `data`: `path:string, recycled:boolean`
+
+Output `artifacts`: `path:string`
 
 ### `fs_list`
 
@@ -58,6 +70,8 @@ List files and folders in an allowed directory (optionally recursive, with glob 
 | `max_depth` | integer | no |  |
 | `pattern` | string | no | Optional glob filter on names, e.g. '*.pdf' |
 
+Output `data`: `path:string, entries:[{name:string, type:string, size?:integer, modified?:string}], truncated:boolean`
+
 ### `fs_move`
 
 Move or rename a file/folder within allowed roots. Fails if the destination exists unless overwrite=true.
@@ -68,6 +82,10 @@ Move or rename a file/folder within allowed roots. Fails if the destination exis
 | `dst` | string | yes | Destination file path, or an existing folder to move into |
 | `overwrite` | boolean | no |  |
 
+Output `data`: `src:string, dst:string`
+
+Output `artifacts`: `src:string, dst:string`
+
 ### `fs_read`
 
 Read a text file or extract text from a PDF. Content is returned as untrusted data.
@@ -77,6 +95,8 @@ Read a text file or extract text from a PDF. Content is returned as untrusted da
 | `path` | string | yes |  |
 | `max_chars` | integer | no |  |
 | `pages` | string | no | PDF only: page range like '1-3' |
+
+Output `data`: `path:string, format:string, text:string, size:integer, pages?:integer, truncated?:boolean`
 
 ### `fs_search`
 
@@ -89,6 +109,8 @@ Search for files by name pattern, extension and/or text content under an allowed
 | `content_query` | string | no | Case-insensitive text to find inside small text files |
 | `extensions` | string[] | no | e.g. ['.pdf', '.docx'] |
 | `max_results` | integer | no |  |
+
+Output `data`: `root:string, matches:[{name:string, type:string, size?:integer, modified?:string, path:string}], scanned:integer, truncated:boolean`
 
 ## Terminal
 
@@ -104,6 +126,8 @@ Describe the execution environment: OS, workspace folder, allowed folders, and w
 
 _No parameters._
 
+Output `data`: `os:string, os_version:string, python:string, workspace:string, cwd:string, allowed_roots:[string], path_aliases:{<key>:string}, tools_installed:{<key>:boolean}, pid:integer`
+
 ### `terminal_execute_safe`
 
 Run ONE allowlisted program (python, pip, node, npm, git, code, pytest, ...) with arguments in a folder inside an allowed root. No shell: pipes, redirects, &&, ; and %VAR% are rejected. Risky commands (running code, installing packages) require user approval. Non-zero exit is reported as an error.
@@ -114,6 +138,10 @@ Run ONE allowlisted program (python, pip, node, npm, git, code, pytest, ...) wit
 | `cwd` | string | no | Working directory inside an allowed root (default: workspace) |
 | `timeout_s` | number | no |  |
 
+Output `data`: `command:string, exit_code:integer, stdout:string, stderr:string, duration_ms:integer, timed_out:boolean, truncated:boolean, cwd:string`
+
+Output `artifacts`: `command:string, exit_code:integer, cwd:string, stdout:string`
+
 ### `terminal_query`
 
 Run a strictly read-only query command (versions, git status/log/diff, pip list, where). Never modifies anything.
@@ -122,6 +150,10 @@ Run a strictly read-only query command (versions, git status/log/diff, pip list,
 |---|---|---|---|
 | `command` | string | yes | A read-only query, e.g. 'git status', 'python --version', 'pip list' |
 | `cwd` | string | no |  |
+
+Output `data`: `command:string, exit_code:integer, stdout:string, stderr:string, duration_ms:integer, timed_out:boolean, truncated:boolean, cwd:string`
+
+Output `artifacts`: `command:string, exit_code:integer, cwd:string, stdout:string`
 
 ## Browser
 
@@ -146,6 +178,8 @@ Go back in the active tab's history.
 
 _No parameters._
 
+Output `data`: `url:string, title:string, tab?:string, tabs:integer, navigation:string`
+
 ### `browser_click`
 
 Click an element by ref (from browser_find) or by natural-language query. Re-resolves stale refs automatically.
@@ -155,6 +189,10 @@ Click an element by ref (from browser_find) or by natural-language query. Re-res
 | `ref` | string | no | Element ref from browser_find/browser_read, e.g. 'e42' |
 | `query` | string | no | Natural-language target, e.g. 'Download', 'Search' |
 | `role` | string | no | button / link / textbox / checkbox / combobox / radio |
+
+Output `data`: `url:string, title:string, tab?:string, tabs:integer, navigation:string, navigated:boolean`
+
+Output `artifacts`: `url:string, title:string`
 
 Retries: up to 2 attempts on `stale_reference, element_not_found`.
 
@@ -170,6 +208,10 @@ Download a file to an allowed folder, via direct URL (HTTP API) or by clicking a
 | `dest_dir` | string | no | Folder inside allowed roots; default @Downloads |
 | `filename` | string | no |  |
 
+Output `data`: `path:string, filename:string, size:integer, url?:string, content_type?:string`
+
+Output `artifacts`: `path:string, size:integer, kind:string, url?:string`
+
 ### `browser_find`
 
 Find interactive elements matching a description using the page's DOM/accessibility structure. Returns a few candidates with stable refs (e.g. button "Download" ref=e42) instead of the whole page.
@@ -180,6 +222,8 @@ Find interactive elements matching a description using the page's DOM/accessibil
 | `role` | string | no |  |
 | `limit` | integer | no |  |
 
+Output `data`: `query:string, matches:[{ref:string, role:string, name:string, score:number, disabled:boolean, href?:string}], ambiguous:boolean, total_interactive:integer, page:{url:string, title:string, tab?:string, tabs:integer, navigation:string}`
+
 Retries: up to 2 attempts on `element_not_found`.
 
 ### `browser_forward`
@@ -188,6 +232,8 @@ Go forward in the active tab's history.
 
 _No parameters._
 
+Output `data`: `url:string, title:string, tab?:string, tabs:integer, navigation:string`
+
 ### `browser_navigate`
 
 Navigate the active tab to an http(s) URL.
@@ -195,6 +241,10 @@ Navigate the active tab to an http(s) URL.
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `url` | string | yes |  |
+
+Output `data`: `url:string, title:string, tab?:string, tabs:integer, navigation:string, status?:integer`
+
+Output `artifacts`: `url:string`
 
 Retries: up to 2 attempts on `navigation_failed`.
 
@@ -206,6 +256,8 @@ Open the browser (isolated session for this task), optionally at a URL, optional
 |---|---|---|---|
 | `url` | string | no | Optional http(s) URL to open |
 | `new_tab` | boolean | no |  |
+
+Output `data`: `url:string, title:string, tab?:string, tabs:integer, navigation:string`
 
 Retries: up to 2 attempts on `navigation_failed`.
 
@@ -220,6 +272,8 @@ Read the current page in a targeted way (text, accessibility tree, or interactiv
 | `max_chars` | integer | no |  |
 | `force` | boolean | no | Return full content even if unchanged since the last read |
 
+Output `data`: `url:string, title:string, tab?:string, tabs:integer, navigation:string, mode?:string, text?:string, total_chars?:integer, aria?:string, truncated?:boolean, elements?:[string], total?:integer, unchanged?:boolean`
+
 ### `browser_select`
 
 Choose an option in a <select>/dropdown by visible label or value.
@@ -232,6 +286,8 @@ Choose an option in a <select>/dropdown by visible label or value.
 | `value` | string | no |  |
 | `label` | string | no |  |
 
+Output `data`: `url:string, title:string, tab?:string, tabs:integer, navigation:string`
+
 Retries: up to 2 attempts on `stale_reference, element_not_found`.
 
 ### `browser_tabs`
@@ -243,6 +299,8 @@ List, switch, close or open browser tabs.
 | `action` | string | no |  |
 | `tab_id` | string | no |  |
 | `url` | string | no |  |
+
+Output `data`: `tabs:[{id:string, url:string, title:string, active:boolean}], active?:string`
 
 ### `browser_type`
 
@@ -257,6 +315,8 @@ Type text into an input/textarea by ref or query. Set submit=true to press Enter
 | `clear` | boolean | no | Replace existing content (fill) instead of appending |
 | `submit` | boolean | no | Press Enter afterwards |
 
+Output `data`: `url:string, title:string, tab?:string, tabs:integer, navigation:string`
+
 Retries: up to 2 attempts on `stale_reference, element_not_found`.
 
 ### `browser_upload`
@@ -270,6 +330,8 @@ Upload a local file through a file input. Disabled unless explicitly enabled; al
 | `role` | string | no | button / link / textbox / checkbox / combobox / radio |
 | `path` | string | yes |  |
 
+Output `data`: `uploaded:string`
+
 ## Api
 
 | Tool | Base risk | Approval | Timeout | Read-only | Idempotent | Untrusted output |
@@ -278,12 +340,17 @@ Upload a local file through a file input. Disabled unless explicitly enabled; al
 
 ### `web_search`
 
-Search the web through a structured search provider (API) and get titles, URLs and snippets. Prefer this over typing into a search engine in the browser: it cannot be blocked by a CAPTCHA. Open a result afterwards with browser_open if you need the page itself.
+Search the web through a structured search provider (API) and get titles, URLs and snippets. Prefer this over typing into a search engine in the browser: it cannot be blocked by a CAPTCHA. Open a result afterwards with browser_open if you need the page itself. For an OFFICIAL source pass official_domains and report data.best with data.source_note.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `query` | string | yes | What to search the web for |
 | `max_results` | integer | no |  |
+| `official_domains` | string[] | no | ONLY when the user asks for the OFFICIAL source: the publisher's domain(s), e.g. ['spring.io']. A result is marked official only if its https URL is on one of them. |
+
+Output `data`: `query:string, provider:string, results:[{title:string, url:string, snippet:string, domain:string, official:boolean}], attempts:[{provider:string, ok:boolean, reason:string}], best?:{title:string, url:string, snippet:string, domain:string, official:boolean}, official_verified:boolean, source_note:string`
+
+Output `artifacts`: `url?:string`
 
 ## Desktop
 
@@ -306,6 +373,8 @@ Return the currently focused window.
 
 _No parameters._
 
+Output `data`: `window?:{title:string, process:string, handle?:integer}`
+
 ### `desktop_click`
 
 Click a control via UI Automation (Invoke/Toggle/Select patterns, then element-relative mouse). vision_ref uses coordinates from a confident vision result as a last resort.
@@ -320,6 +389,10 @@ Click a control via UI Automation (Invoke/Toggle/Select patterns, then element-r
 | `role` | string | no | button / textbox / menuitem / listitem / checkbox / ... |
 | `automation_id` | string | no | Stable UI Automation id (most reliable) |
 | `vision_ref` | string | no | FALLBACK: element ref from vision_analyze (e.g. 'vis_ab12:e2'); only if UI Automation cannot find the control |
+
+Output `data`: `method:string, element?:string, point?:[integer], label?:string`
+
+Output `artifacts`: `element?:string`
 
 Retries: up to 2 attempts on `stale_reference`.
 
@@ -337,6 +410,8 @@ Find UI controls in a window via Windows UI Automation (buttons, text boxes, men
 | `automation_id` | string | no |  |
 | `limit` | integer | no |  |
 
+Output `data`: `window:string, matches:[{ref:string, role:string, name:string, automation_id:string, enabled:boolean, score:number}], ambiguous:boolean, ui_quality:string`
+
 ### `desktop_focus`
 
 Bring a window to the foreground (restores it if minimized).
@@ -346,6 +421,8 @@ Bring a window to the foreground (restores it if minimized).
 | `window_title` | string | no | Window title substring (default: the active window) |
 | `window_process` | string | no | Process name such as 'Code.exe' |
 | `window_handle` | integer | no |  |
+
+Output `data`: `window:string, process:string`
 
 ### `desktop_key`
 
@@ -359,6 +436,8 @@ Send ONE validated key combination to the focused window (e.g. Ctrl+S). Terminal
 | `keys` | string | yes | One combination, e.g. 'Ctrl+S', 'Ctrl+Shift+P', 'Enter', 'F5'. The Windows key is not allowed. |
 | `focus_first` | boolean | no | Bring the selected window to the foreground first |
 
+Output `data`: `keys:string, window?:string`
+
 ### `desktop_launch`
 
 Launch an allowlisted application (optionally opening a folder/file inside allowed roots).
@@ -368,6 +447,10 @@ Launch an allowlisted application (optionally opening a folder/file inside allow
 | `app` | string | yes | Allowlisted application name, e.g. 'vscode', 'notepad', 'calculator', 'explorer' |
 | `args` | string[] | no | Arguments; file/folder paths must be inside allowed folders |
 | `new_instance` | boolean | no | Start another instance even if the app is already open (default: reuse the open window) |
+
+Output `data`: `pid?:integer, window?:{handle:integer, title:string, process:string, pid:integer, active:boolean, minimized:boolean, rect:{<key>:integer}}, reused?:boolean`
+
+Output `artifacts`: `app:string, pid?:integer`
 
 ### `desktop_read`
 
@@ -387,6 +470,8 @@ Read desktop state structurally: the control tree of a window, one element's val
 | `max_elements` | integer | no |  |
 | `role_filter` | string[] | no | mode=tree: only these roles, e.g. ['button','textbox'] |
 
+Output `data`: `window?:string, process?:string, quality?:string, truncated?:boolean, tree?:[string], element?:string, name?:string, role?:string, value?:any, toggle_state?:any, enabled?:boolean, focused?:boolean, selected?:boolean, text?:string, chars?:integer`
+
 ### `desktop_scroll`
 
 Scroll a control or window (UI Automation scroll pattern, mouse wheel as fallback).
@@ -402,6 +487,8 @@ Scroll a control or window (UI Automation scroll pattern, mouse wheel as fallbac
 | `automation_id` | string | no | Stable UI Automation id (most reliable) |
 | `direction` | string | no |  |
 | `amount` | integer | no |  |
+
+Output `data`: `method:string`
 
 ### `desktop_type`
 
@@ -419,6 +506,8 @@ Type text into a specific text control (set via UI Automation value pattern; key
 | `text` | string | yes |  |
 | `clear` | boolean | no |  |
 
+Output `data`: `method:string, element:string`
+
 Retries: up to 2 attempts on `stale_reference`.
 
 ### `desktop_windows`
@@ -426,6 +515,8 @@ Retries: up to 2 attempts on `stale_reference`.
 List visible top-level windows (title, process, active/minimized).
 
 _No parameters._
+
+Output `data`: `windows:[{handle:integer, title:string, process:string, active:boolean, minimized:boolean}]`
 
 ## Vision
 
@@ -444,6 +535,8 @@ FALLBACK ONLY. Analyse a captured screenshot with the vision model. Returns stru
 | `goal` | string | yes | What to locate / read / verify, e.g. 'the green Run button' |
 | `mode` | string | no |  |
 
+Output `data`: `vision_id:string, confidence:number, needs_confirmation:boolean, answer:string, verdict?:boolean, text?:string, elements:[{ref:string, label:string, kind:string, confidence:number}]`
+
 ### `vision_capture`
 
 FALLBACK ONLY. Capture a screenshot (window/screen/browser) for vision_analyze. Use only when DOM/accessibility and UI Automation cannot answer the question; the reason is recorded.
@@ -455,6 +548,8 @@ FALLBACK ONLY. Capture a screenshot (window/screen/browser) for vision_analyze. 
 | `window_process` | string | no |  |
 | `full_page` | boolean | no |  |
 | `reason` | string | yes | Why structured perception (DOM/UI Automation) is insufficient |
+
+Output `data`: `capture_id:string, source:string, size:[integer], window?:string`
 
 ## Verification
 
@@ -477,6 +572,10 @@ Verify the browser state: URL/title/visible text/element presence (all given con
 | `element` | string | no | Element description that must be present |
 | `wait_s` | number | no |  |
 
+Output `data`: `passed:boolean, message?:string, kind?:string, evidence?:object, checks?:[{passed:boolean, message:string, kind?:string}]`
+
+Output `artifacts`: `verified:boolean`
+
 ### `verify_desktop_state`
 
 Verify desktop state via UI Automation: window open/closed, control exists, enabled, or contains a value.
@@ -492,6 +591,10 @@ Verify desktop state via UI Automation: window open/closed, control exists, enab
 | `expect_enabled` | boolean | no |  |
 | `expect_value_contains` | string | no |  |
 
+Output `data`: `passed:boolean, message?:string, kind?:string, evidence?:object, checks?:[{passed:boolean, message:string, kind?:string}]`
+
+Output `artifacts`: `verified:boolean`
+
 ### `verify_file_state`
 
 Verify a file/folder state: exists, absent, is a directory, or contains text.
@@ -504,6 +607,10 @@ Verify a file/folder state: exists, absent, is a directory, or contains text.
 | `min_bytes` | integer | no |  |
 | `wait_s` | number | no |  |
 
+Output `data`: `passed:boolean, message?:string, kind?:string, evidence?:object, checks?:[{passed:boolean, message:string, kind?:string}]`
+
+Output `artifacts`: `verified:boolean`
+
 ### `verify_task_result`
 
 Verify several conditions at once. Kinds: browser_element, browser_text, browser_title, browser_url, dir_exists, download_complete, element_state, file_absent, file_contains, file_exists, file_moved, files_exist, value_check, window_exists.
@@ -511,3 +618,7 @@ Verify several conditions at once. Kinds: browser_element, browser_text, browser
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `criteria` | object[] | yes | List of {kind, params} verification specs, e.g. {kind:'file_exists', params:{path:'...'}} |
+
+Output `data`: `passed:boolean, message?:string, kind?:string, evidence?:object, checks?:[{passed:boolean, message:string, kind?:string}]`
+
+Output `artifacts`: `verified:boolean`

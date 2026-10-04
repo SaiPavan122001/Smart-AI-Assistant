@@ -206,7 +206,11 @@ async def test_failed_verification_after_open_never_reopens_and_ends_safely(tmp_
     never = [
         {
             "kind": "element_state",
-            "params": {"window_title": "ThisWindowDoesNotExist", "exists": True},
+            "params": {
+                "window_title": "ThisWindowDoesNotExist",
+                "query": "anything",
+                "expect": {"exists": True},
+            },
         }
     ]
     first = plan(step("s1", "desktop_launch", {"app": "notepad"}, verify=never))

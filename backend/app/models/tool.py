@@ -27,8 +27,9 @@ class ToolSpec(BaseModel):
     name: str
     description: str
     input_schema: dict[str, Any]
-    output_schema: dict[str, Any] = Field(default_factory=dict)
-    returns: str = ""  # human/LLM-readable shape of the output `data`
+    output_schema: dict[str, Any] = Field(default_factory=dict)  # JSON schema of `data`
+    artifacts_schema: dict[str, Any] = Field(default_factory=dict)  # JSON schema of `artifacts`
+    returns: str = ""  # compact field list of `data`, derived from output_schema
     capability: Capability
     risk: RiskLevel = RiskLevel.LOW  # baseline; assess() may raise it per call
     approval: ApprovalRequirement = ApprovalRequirement.POLICY

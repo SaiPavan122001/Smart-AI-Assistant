@@ -163,6 +163,8 @@ class LimitSettings(BaseModel):
     max_identical_actions: int = 6  # same side-effecting call executed this many times in a row
     max_cycle_repeats: int = 3  # an A,B,A,B,... action cycle repeated this many times
     max_no_progress: int = 5  # consecutive tool calls with identical call AND identical result
+    # Longest a verification check may poll for a condition (downloads may use up to 30 s).
+    verification_max_wait_s: float = 10.0
 
 
 class SearchSettings(BaseModel):
@@ -171,6 +173,9 @@ class SearchSettings(BaseModel):
     providers: list[Literal["brave", "tavily", "duckduckgo"]] = ["brave", "tavily", "duckduckgo"]
     max_results: int = Field(default=8, ge=1, le=20)
     timeout_s: float = 15.0
+    # Domains whose https pages may be reported as an "official" source without the request
+    # naming them (e.g. ["spring.io", "python.org"]). Empty: only domains the task asks for count.
+    trusted_domains: list[str] = Field(default_factory=list)
 
 
 class SecretsSettings(BaseModel):

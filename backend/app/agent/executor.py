@@ -9,7 +9,7 @@ from typing import Any
 from app.agent.adaptive import AdaptiveOutcome, AdaptiveRunner
 from app.agent.state import RunState
 from app.models.enums import EventType, StepKind, StepStatus, TaskStatus
-from app.models.plan import PlanStep
+from app.models.plan import AdaptiveOutput, PlanStep
 from app.models.tool import ToolCall, ToolResult
 from app.models.verification import VerificationResult, VerificationSpec
 from app.observability.logging import get_logger
@@ -30,6 +30,7 @@ _TERMINAL_STEP = (StepStatus.SUCCEEDED, StepStatus.FAILED, StepStatus.SKIPPED)
 class StepOutcome:
     ok: bool
     replan_reason: str | None = None
+    replan_code: ErrorCode | None = None
     fatal: ErrorInfo | None = None  # limit/cancel: abort the task
 
 
@@ -82,6 +83,7 @@ class StepExecutor:
 
         while True:
             ctx.token.raise_if_cancelled()
+            await rs.gate()  # a paused task starts no attempt, re-check or recovery
             if (
                 ctx.loop_guard.tripped
             ):  # a tripped loop guard blocks further attempts, recovery and replans
@@ -93,6 +95,7 @@ class StepExecutor:
             try:
                 attempt = await self._attempt(
                     rs, ctx, step, adaptive=mode_adaptive, goal=adaptive_goal, args=args_override, skip_action=skip_action,
+                    recovering=mode_adaptive and step.kind is not StepKind.ADAPTIVE,
                     prior=rs.step_data.get(step.id),
                 )  # fmt: skip
             except TaskCancelled:
@@ -144,6 +147,7 @@ class StepExecutor:
                 await self._fail(rs, step, attempt, superseded=True, performed=performed)
                 return StepOutcome(
                     ok=False,
+                    replan_code=attempt.code,
                     replan_reason=f"Step {step.id} '{step.title}' failed ({attempt.code.value}): {attempt.message[:400]}",
                 )
 
@@ -169,6 +173,7 @@ class StepExecutor:
     async def _attempt(
         self, rs: RunState, ctx: ExecutionContext, step: PlanStep, *, adaptive: bool, goal: str | None,
         args: dict[str, Any] | None, skip_action: bool, prior: dict[str, Any] | None,
+        recovering: bool = False,
     ) -> _Attempt:  # fmt: skip
         step.attempts += 1
         data: dict[str, Any] = {}
@@ -188,6 +193,7 @@ class StepExecutor:
                 out: AdaptiveOutcome = await self._adaptive.run(
                     title=step.title, goal=goal or step.goal or step.title, allowed_tools=step.allowed_tools,
                     context_text=context_text, rationale=step.rationale, ctx=ctx, max_iterations=self._max_adaptive,
+                    stop_on_refusal=recovering,
                 )  # fmt: skip
             except TaskCancelled:
                 raise
@@ -197,7 +203,10 @@ class StepExecutor:
                 code = out.error.code if out.error else ErrorCode.VERIFICATION_FAILED
                 return _Attempt(False, code, out.error.message if out.error else out.summary)
             summary, artifacts, answer = out.summary, dict(out.artifacts), out.answer
-            data = {"iterations": out.iterations, "tool_calls": [r.tool for r in out.results]}
+            data = AdaptiveOutput(
+                iterations=out.iterations, tool_calls=[r.tool for r in out.results],
+                summary=out.summary, answer=out.answer,
+            ).model_dump()  # fmt: skip
             # A recovered tool step must look like the step it replaces: expose the output of the last
             # successful call of the planned tool, so later `{{steps.sN.data.x}}` references still resolve.
             wanted = [r for r in out.results if r.ok and (not step.tool or r.tool == step.tool)]
@@ -209,8 +218,10 @@ class StepExecutor:
             try:
                 raw_args = resolve(args if args is not None else step.args, rs.scope)
             except TemplateError as exc:
+                # A reference no earlier step produced is a defect of the PLAN: retrying or poking
+                # at the UI cannot fix it, only a revised plan can.
                 return _Attempt(
-                    False, ErrorCode.INVALID_INPUT, f"could not resolve arguments: {exc}"
+                    False, ErrorCode.PLAN_INVALID, f"could not resolve arguments: {exc}"
                 )
             call = ToolCall(
                 tool=step.tool or "",
@@ -241,9 +252,12 @@ class StepExecutor:
                 await rs.set_status(TaskStatus.EXECUTING)
                 return _Attempt(
                     False,
-                    ErrorCode.INVALID_INPUT,
+                    ErrorCode.PLAN_INVALID,
                     f"could not resolve verification: {exc}",
                     phase="verify",
+                    data=data,
+                    artifacts=artifacts,
+                    summary=summary,
                 )
             verifications = await self._verifier.run(
                 specs, ctx, step_id=step.id, scope=f"step {step.id}"
@@ -251,8 +265,15 @@ class StepExecutor:
             await rs.set_status(TaskStatus.EXECUTING)
             failed = [v for v in verifications if not v.passed]
             if failed:
+                # A contract that can never hold (bad params, unknown kind) is a plan defect, not a
+                # flapping condition: skip refresh/adaptive recovery and go straight to a re-plan.
+                code = (
+                    ErrorCode.PLAN_INVALID
+                    if all(v.terminal for v in failed)
+                    else ErrorCode.VERIFICATION_FAILED
+                )
                 return _Attempt(
-                    False, ErrorCode.VERIFICATION_FAILED, "; ".join(v.message for v in failed)[:500], phase="verify",
+                    False, code, "; ".join(v.message for v in failed)[:500], phase="verify",
                     data=data, artifacts=artifacts, summary=summary, verifications=verifications,
                 )  # fmt: skip
         return _Attempt(
@@ -277,7 +298,9 @@ class StepExecutor:
             step.id, data=a.data or {}, artifacts=a.artifacts or {}, summary=step.summary, ok=True
         )
         if a.answer:
-            rs.answer = a.answer
+            rs.step_answers[step.id] = a.answer
+        else:
+            rs.step_answers.pop(step.id, None)
         for k, v in (a.artifacts or {}).items():
             if k in ("path", "dst", "url"):
                 rs.artifacts.setdefault(k + "s", []).append(v)
@@ -318,6 +341,7 @@ class StepExecutor:
             # recovery nor a replan treats the action as undone and performs it again.
             step.output["action_performed"] = True
         rs.record_step_data(step.id, data={}, artifacts={}, summary=step.summary, ok=False)
+        rs.step_answers.pop(step.id, None)  # a failed step has no answer to offer
         if rs.task.status is TaskStatus.RECOVERING:
             await rs.set_status(TaskStatus.EXECUTING)
         await rs.emit(

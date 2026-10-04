@@ -24,6 +24,7 @@ from app.llm.scripted import ScriptedProvider
 from app.registry import build_registry
 from app.state.memory import InMemoryRepository
 from app.tools.desktop.memory import FakeDesktopBackend
+from app.tools.schema import describe
 from app.tools.vision.service import VisionService
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -89,6 +90,11 @@ def render_catalog() -> str:
                     lines.append("")
                 else:
                     lines += ["_No parameters._", ""]
+                if t.returns:
+                    lines += [f"Output `data`: `{t.returns}`", ""]
+                arts = describe(t.artifacts_schema)
+                if arts:
+                    lines += [f"Output `artifacts`: `{arts}`", ""]
                 if t.retry.max_attempts > 1:
                     lines += [
                         f"Retries: up to {t.retry.max_attempts} attempts on `{', '.join(t.retry.retry_on) or 'retryable errors'}`.",

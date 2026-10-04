@@ -13,6 +13,18 @@ from app.utils.errors import ErrorInfo
 from app.utils.ids import new_id, utcnow
 
 
+class AdaptiveOutput(BaseModel):
+    """``data`` recorded for an adaptive step (plus the output of the last successful call of the
+    step's planned tool, when a tool step was recovered adaptively)."""
+
+    iterations: int = Field(description="model round trips used")
+    tool_calls: list[str] = Field(default_factory=list, description="names of the tools called")
+    summary: str = Field(default="", description="what the step did / observed")
+    answer: str | None = Field(
+        default=None, description="information the step's goal asked for, if any"
+    )
+
+
 class PlanStep(BaseModel):
     id: str  # unique within the plan, e.g. "s1"
     title: str  # human-readable, shown in the activity timeline

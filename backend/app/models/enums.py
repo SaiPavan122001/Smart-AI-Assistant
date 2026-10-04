@@ -33,6 +33,7 @@ class TaskStatus(StrEnum):
     EXECUTING = "EXECUTING"
     RECOVERING = "RECOVERING"
     VERIFYING = "VERIFYING"
+    PAUSED = "PAUSED"  # parked at the pause gate: no tool call, LLM call, recovery or re-plan runs
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
     CANCELLED = "CANCELLED"
@@ -46,6 +47,37 @@ class TaskStatus(StrEnum):
 TERMINAL_STATUSES = frozenset(
     {TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED, TaskStatus.TIMED_OUT}
 )
+
+
+class VerificationStatus(StrEnum):
+    """Outcome of the task's final verification contract (authoritative for ``verified``)."""
+
+    VERIFIED = "VERIFIED"  # every deterministic criterion passed and all required state is complete
+    JUDGED = "JUDGED"  # no machine-checkable criteria: lower-assurance model judgement passed
+    INCOMPLETE = "INCOMPLETE"  # criteria passed, but required steps / answer data are missing
+    FAILED = "FAILED"  # at least one criterion did not hold
+    NOT_RUN = "NOT_RUN"  # the task ended before final verification
+
+
+class AnswerStatus(StrEnum):
+    """What the ``answer`` text is. Only ``ANSWERED`` is a success answer."""
+
+    ANSWERED = "ANSWERED"  # rendered from verified outputs of a COMPLETED task
+    NOT_REQUESTED = "NOT_REQUESTED"  # the task completed and asked for no information back
+    UNAVAILABLE = "answer_unavailable"  # completed, but a required answer field was never produced
+    WITHHELD = "WITHHELD"  # the task did not succeed: the text describes the failure, not a result
+
+
+class TaskOutcome(StrEnum):
+    """Why a task ended. Finer-grained than ``TaskStatus`` (several map to FAILED)."""
+
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+    CANCELLED = "CANCELLED"
+    TIMED_OUT = "TIMED_OUT"
+    DENIED = "DENIED"
+    LOOP_DETECTED = "LOOP_DETECTED"
+    PLAN_INVALID = "PLAN_INVALID"
 
 
 class StepStatus(StrEnum):
@@ -120,8 +152,12 @@ class EventType(StrEnum):
     VERIFICATION_COMPLETED = "verification_completed"
     USAGE_UPDATED = "usage_updated"
     STATUS_CHANGED = "status_changed"
-    TASK_PAUSED = "task_paused"
-    TASK_RESUMED = "task_resumed"
+    PAUSE_REQUESTED = "pause_requested"
+    PAUSE_COMPLETED = "pause_completed"  # the task is parked: status is PAUSED
+    RESUME_REQUESTED = "resume_requested"
+    RESUME_COMPLETED = "resume_completed"  # status restored, execution gate released
+    TASK_PAUSED = "task_paused"  # legacy (events stored before the PAUSED state); no longer emitted
+    TASK_RESUMED = "task_resumed"  # legacy; no longer emitted
     TASK_COMPLETED = "task_completed"
     TASK_FAILED = "task_failed"
     TASK_CANCELLED = "task_cancelled"

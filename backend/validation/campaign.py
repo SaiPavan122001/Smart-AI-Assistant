@@ -39,6 +39,7 @@ from app.config.settings import (  # noqa: E402
 from app.container import build_container  # noqa: E402
 
 S7 = L.SANDBOX / "step7"
+TAG = os.environ.get("SAA_CAMPAIGN_TAG", "step7")  # result-file prefix (e.g. "p01" for a re-run)
 
 
 def settings(extra: dict[str, Any] | None = None) -> Settings:
@@ -110,6 +111,58 @@ def scenarios() -> dict[str, L.Scenario]:
         expect_status="FAILED",
         max_llm_calls=8,
     )  # run with SAA_SEARCH__PROVIDERS='["brave"]' (no key)
+    # ---- P0/P1 hardening re-validation ------------------------------------------------------
+    f2 = S7 / "f2"
+
+    def f2_setup(e: L.Env) -> None:
+        d = L.fresh(f2)
+        (d / "draft.txt").write_text("draft v1")
+        (d / "final.txt").write_text("the existing final")
+
+    def f2_check(e: L.Env, t: Any) -> dict[str, Any]:
+        answer = (t.result.answer or "") if t.result else ""
+        return {
+            "world_unchanged": (f2 / "draft.txt").read_text() == "draft v1"
+            and (f2 / "final.txt").read_text() == "the existing final",
+            "answer_describes_failure": bool(t.result)
+            and t.result.answer_status.value == "WITHHELD"
+            and not any(
+                w in answer.lower() for w in ("has been renamed", "was renamed", "successfully")
+            ),
+        }
+
+    sc["F2"] = L.S(
+        "F2", "Failed filesystem operation (rename onto an existing file, overwrite denied)",
+        f"Rename {f2 / 'draft.txt'} to final.txt in the same folder and tell me the new path.",
+        setup=f2_setup, check=f2_check, decide=L.deny, expect_status="FAILED", max_llm_calls=8,
+    )  # fmt: skip
+    # Phase 15: harmless simple tasks, measured against the pre-hardening baseline
+    sc["PA"] = L.S(
+        "PA", "Calculator 25 x 16", "Open Calculator and calculate 25 × 16.", max_llm_calls=8
+    )
+    sc["PB"] = L.S("PB", "example.com page title",
+                   "Open Chrome, go to example.com, and tell me the page title.", max_llm_calls=4)  # fmt: skip
+    sc["PC"] = L.S("PC", "Official Spring Boot docs (title + URL)",
+                   "Search the web for Spring Boot official documentation and tell me the title and URL.",
+                   max_llm_calls=6)  # fmt: skip
+    cnt = S7 / "count"
+
+    def cnt_setup(e: L.Env) -> None:
+        d = L.fresh(cnt)
+        for n in ("a.pdf", "b.pdf", "c.pdf", "notes.txt", "todo.md"):
+            (d / n).write_text(n)
+
+    sc["CNT"] = L.S(
+        "CNT",
+        "User-intent count (how many PDFs)",
+        f"How many PDF files are in the folder {cnt}? Tell me the number.",
+        setup=cnt_setup,
+        max_llm_calls=4,
+        check=lambda e, t: {
+            "answer_has_count": bool(t.result and "3" in (t.result.answer or "")),
+            "world_unchanged": len(list(cnt.iterdir())) == 5,
+        },
+    )
     sc["S9c"] = L.S("S9c", "Browser search blocked", "Open https://www.google.com in Chrome, type Java Spring Boot official documentation into the Google search box and press Enter, then open the official Spring Boot documentation.",
                     max_llm_calls=10, timeout_s=300)  # fmt: skip
     return sc
@@ -178,7 +231,7 @@ async def run(sid: str) -> None:
             "wall_s": round(time.time() - t0, 1),
         }
         await c.stop()
-    path = Path(__file__).parent / "results" / f"step7-{sid}.json"
+    path = Path(__file__).parent / "results" / f"{TAG}-{sid}.json"
     path.write_text(json.dumps(out, indent=2, default=str), encoding="utf-8")
     keep = (
         "id",
@@ -187,6 +240,19 @@ async def run(sid: str) -> None:
         "expected_status",
         "status_ok",
         "verified",
+        "outcome",
+        "verification_status",
+        "answer_status",
+        "calls_by_purpose",
+        "verification",
+        "pause_resume_events",
+        "persisted_status_while_paused",
+        "llm_calls_while_paused",
+        "events_while_paused",
+        "world_unchanged",
+        "answer_describes_failure",
+        "answer_has_count",
+        "plan_invalid_details",
         "task_id",
         "model",
         "duration_s",

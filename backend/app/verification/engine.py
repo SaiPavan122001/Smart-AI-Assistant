@@ -38,8 +38,15 @@ class VerificationEngine:
             res = VerificationResult(
                 task_id=ctx.task_id, step_id=step_id, kind=spec.kind, passed=outcome.passed,
                 description=spec.description or spec.kind, evidence=outcome.evidence, message=outcome.message,
+                polls=outcome.polls, duration_ms=round(outcome.duration_ms, 1), terminal=outcome.terminal,
             )  # fmt: skip
             results.append(res)
+            usage = ctx.meter.usage
+            usage.verification_attempts += 1
+            usage.verification_polls += outcome.polls
+            usage.verification_duration_ms += outcome.duration_ms
+            if outcome.passed:
+                usage.verification_success_ms += outcome.duration_ms
             await self._repo.save_verification(res)
             if not res.passed:
                 ctx.meter.usage.verification_failures += 1
@@ -51,7 +58,7 @@ class VerificationEngine:
             f"Verification {scope}: {len(results) - len(failed)}/{len(results)} passed",
             {
                 "scope": scope, "passed": not failed,
-                "results": [r.model_dump(mode="json", include={"kind", "passed", "message", "description"}) for r in results],
+                "results": [r.model_dump(mode="json", include={"kind", "passed", "message", "description", "polls", "duration_ms"}) for r in results],
             },
             step_id=step_id,
         )  # fmt: skip

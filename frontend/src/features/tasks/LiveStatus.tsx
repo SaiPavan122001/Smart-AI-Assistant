@@ -32,7 +32,7 @@ export function LiveStatus({ view, connection, onPause, onResume, onCancel, busy
         <div className="kv">
           <span className="k">Status</span>
           <span className="v" data-testid="status-label">
-            <StatusBadge status={view.status} /> {view.paused && <span className="badge warn">paused</span>}
+            <StatusBadge status={view.status} /> {view.paused && view.status !== "PAUSED" && <span className="badge warn">pausing…</span>}
           </span>
         </div>
         <div className="kv"><span className="k">Phase</span><span className="v">{STATUS_LABEL[view.status]}</span></div>
@@ -47,7 +47,7 @@ export function LiveStatus({ view, connection, onPause, onResume, onCancel, busy
         <span className="spacer" />
         {active && view.taskId && (
           <div className="row">
-            {view.paused ? (
+            {view.paused || view.status === "PAUSED" ? (
               <button onClick={onResume} disabled={busy}>Resume</button>
             ) : (
               <button onClick={onPause} disabled={busy}>Pause</button>

@@ -21,7 +21,11 @@ class ErrorCode(StrEnum):
     TIMEOUT = "timeout"
     CANCELLED = "cancelled"
     LIMIT_EXCEEDED = "limit_exceeded"
-    BLOCKED_BY_SITE = "blocked_by_site"  # bot check / CAPTCHA: never bypassed
+    # search / browser-automation contract (provider-specific reasons live in ``details``)
+    SEARCH_UNAVAILABLE = "SEARCH_UNAVAILABLE"  # no search provider could answer
+    SEARCH_AUTOMATION_BLOCKED = (
+        "SEARCH_AUTOMATION_BLOCKED"  # bot check / CAPTCHA: never bypassed, never retried
+    )
     LOOP_DETECTED = "loop_detected"  # the agent is repeating actions without progress
     # security
     POLICY_DENIED = "policy_denied"
@@ -46,6 +50,58 @@ class ErrorCode(StrEnum):
     IO_ERROR = "io_error"
     LLM_ERROR = "llm_error"
     PLAN_INVALID = "plan_invalid"
+
+    @classmethod
+    def _missing_(cls, value: object) -> ErrorCode | None:
+        """Records persisted before the search-error normalisation still load."""
+        return _LEGACY_CODES.get(str(value))
+
+
+_LEGACY_CODES: dict[str, ErrorCode] = {"blocked_by_site": ErrorCode.SEARCH_AUTOMATION_BLOCKED}
+
+# ---- retry classification: the single place that says whether trying again can help -----------
+# Transient: the same action may succeed if repeated (subject to the per-step recovery budget).
+RETRYABLE_CODES: frozenset[ErrorCode] = frozenset(
+    {
+        ErrorCode.TIMEOUT,
+        ErrorCode.NAVIGATION_FAILED,
+        ErrorCode.IO_ERROR,
+        ErrorCode.STALE_REFERENCE,
+        ErrorCode.LLM_ERROR,
+    }
+)
+# Final: a human decision, a hard limit, a protected resource or an automation block ended it.
+# These never enter retry / refresh / adaptive recovery and never trigger a re-plan.
+NON_RETRYABLE_CODES: frozenset[ErrorCode] = frozenset(
+    {
+        ErrorCode.APPROVAL_DENIED,
+        ErrorCode.APPROVAL_TIMEOUT,
+        ErrorCode.INJECTION_BLOCKED,
+        ErrorCode.CANCELLED,
+        ErrorCode.KILL_SWITCH,
+        ErrorCode.LIMIT_EXCEEDED,
+        ErrorCode.LOOP_DETECTED,
+        ErrorCode.NOT_AVAILABLE,
+        ErrorCode.UNKNOWN_TOOL,
+    }
+)
+# Not retryable either, but ONE re-plan may find a compliant alternative (another source, another
+# path). A second occurrence of the same condition in the same task is final.
+SINGLE_REPLAN_CODES: frozenset[ErrorCode] = frozenset(
+    {
+        ErrorCode.SEARCH_AUTOMATION_BLOCKED,
+        ErrorCode.SEARCH_UNAVAILABLE,
+        ErrorCode.PLAN_INVALID,
+        ErrorCode.POLICY_DENIED,
+        ErrorCode.PATH_BLOCKED,
+        ErrorCode.COMMAND_BLOCKED,
+        ErrorCode.URL_BLOCKED,
+    }
+)
+
+
+def is_retryable(code: ErrorCode) -> bool:
+    return code in RETRYABLE_CODES
 
 
 class ErrorInfo(BaseModel):

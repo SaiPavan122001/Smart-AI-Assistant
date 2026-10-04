@@ -10,27 +10,50 @@ from pathlib import Path
 from pydantic import BaseModel
 
 from app.agent.adaptive import AdaptiveRunner
+from app.agent.answer import (
+    AnswerDecision,
+    candidate_answer,
+    decide_answer,
+    incomplete_required_steps,
+    is_superseded,
+    outcome_of,
+)
 from app.agent.executor import StepExecutor
 from app.agent.state import RunState, TaskHandle
 from app.llm.base import LLMRequest, Message
 from app.llm.capabilities import require_for_agent
 from app.llm.gateway import LLMGateway
-from app.models.enums import EventType, StepStatus, TaskStatus
+from app.models.enums import (
+    AnswerStatus,
+    EventType,
+    StepKind,
+    StepStatus,
+    TaskStatus,
+    VerificationStatus,
+)
 from app.models.plan import Plan, PlanStep
-from app.models.task import Task, TaskResult
+from app.models.task import Task, TaskMetrics, TaskResult
 from app.models.verification import VerificationResult, VerificationSpec
 from app.observability.logging import bind, get_logger
 from app.observability.metrics import Metrics
 from app.permissions.approvals import ApprovalManager
-from app.planner.planner import Planner
-from app.recovery.engine import RecoveryEngine
+from app.planner.planner import Planner, merge_criteria
+from app.recovery.engine import RecoveryAttempt, RecoveryEngine, Strategy
 from app.state.events import EventBus
 from app.state.repository import AgentActionRecord, Repository
 from app.tools.context import ExecutionContext, ToolServices
 from app.tools.loop_guard import report_loop
 from app.tools.registry import ToolRegistry
 from app.tools.router import ToolRouter
-from app.utils.errors import AgentError, ErrorCode, ErrorInfo, LimitExceeded, TaskCancelled
+from app.utils.errors import (
+    NON_RETRYABLE_CODES,
+    SINGLE_REPLAN_CODES,
+    AgentError,
+    ErrorCode,
+    ErrorInfo,
+    LimitExceeded,
+    TaskCancelled,
+)
 from app.utils.ids import utcnow
 from app.utils.templating import TemplateError, referenced_steps, resolve
 from app.verification.engine import VerificationEngine
@@ -85,12 +108,12 @@ class TaskRunner:
         status = TaskStatus.FAILED
         error: ErrorInfo | None = None
         verification: list[VerificationResult] = []
-        verified = False
+        passed = False  # did the FINAL verification pass? (authoritative; set only on success)
         with bind(task_id=task.id, session_id=task.session_id, request_id=task.request_id):
             try:
                 async with asyncio.timeout(self._settings.limits.max_execution_seconds):
-                    verification, verified = await self._lifecycle(rs, ctx)
-                status = TaskStatus.COMPLETED
+                    verification = await self._lifecycle(rs, ctx)
+                status, passed = TaskStatus.COMPLETED, True
             except TaskCancelled as exc:
                 status, error = (
                     TaskStatus.CANCELLED,
@@ -120,14 +143,13 @@ class TaskRunner:
                 )
             finally:
                 result = await self._finalize(
-                    rs, ctx, status, error, verification, verified, time.monotonic() - started
+                    rs, ctx, status, error, verification, passed, time.monotonic() - started
                 )
         return result
 
     # ================================================================== lifecycle
-    async def _lifecycle(
-        self, rs: RunState, ctx: ExecutionContext
-    ) -> tuple[list[VerificationResult], bool]:
+    async def _lifecycle(self, rs: RunState, ctx: ExecutionContext) -> list[VerificationResult]:
+        """Plan, execute and verify. Returns the passing final-verification results, or raises."""
         if self.d.planner is None or self._executor is None:
             raise AgentError(
                 "No LLM provider is configured. Set SAA_LLM__PROVIDER and an API key (e.g. ANTHROPIC_API_KEY).",
@@ -142,6 +164,7 @@ class TaskRunner:
                 log.warning("model capability note", extra={"note": w})
         # ---- Understand + Plan -------------------------------------------------------
         await rs.set_status(TaskStatus.PLANNING)
+        await rs.gate()  # a task paused before it started must not spend a model call
         await rs.emit(EventType.PLANNING_STARTED, "Understanding the request and planning")
         outcome = await self.d.planner.create_plan(
             task.id, task.instruction, meter=rs.handle.meter, token=rs.handle.token
@@ -153,6 +176,7 @@ class TaskRunner:
             )  # fmt: skip
         rs.plan = outcome.plan
         ctx.plan_id = rs.plan.id
+        self._set_llm_budget(rs)
         await self.d.repo.save_agent_action(
             AgentActionRecord(
                 task_id=task.id,
@@ -172,32 +196,44 @@ class TaskRunner:
 
         # ---- Verify ---------------------------------------------------------------------
         for _round in range(self._settings.limits.max_replans + 1):
-            self._compose_answer(rs)
             ctx.token.raise_if_cancelled()
+            await rs.gate()
             self._raise_if_looping(ctx)
-            await rs.set_status(TaskStatus.VERIFYING)
-            results, ok = await self._verify_final(rs, ctx)
-            rs.last_verification = results
-            blocking = self._blocking_failures(rs)
-            if ok and not blocking:
-                return results, any(r.method == "deterministic" for r in results) and all(
-                    r.passed for r in results
-                )
-            reason = self._failure_text(rs, results, blocking)
-            if rs.replans_used >= self._settings.limits.max_replans or self._denied_by_user(
-                blocking
-            ):
+            results: list[VerificationResult] = []
+            # A required step that failed or never ran already decides the outcome: the final
+            # contract is not polled for a result that is known.
+            blocking = incomplete_required_steps(rs.plan)
+            if not blocking:
+                await rs.set_status(TaskStatus.VERIFYING)
+                results, ok = await self._verify_final(rs, ctx)
+                rs.last_verification = results
+                if ok:
+                    return results
+            reason = self._failure_text(results, blocking)
+            if rs.replans_used >= self._settings.limits.max_replans or self._is_final(rs, blocking):
+                failed = [s for s in blocking if s.error is not None]
                 raise TaskFailure(
                     ErrorInfo(
-                        code=ErrorCode.VERIFICATION_FAILED
-                        if not blocking
-                        else (blocking[0].error.code if blocking[0].error else ErrorCode.INTERNAL),
+                        code=failed[0].error.code  # type: ignore[union-attr]
+                        if failed
+                        else ErrorCode.VERIFICATION_FAILED,
                         message=reason,
                     ),
                     results,
                 )
-            await rs.set_status(TaskStatus.RECOVERING, "Final verification failed; re-planning")
-            await self._replan(rs, ctx, reason)
+            for s in blocking:  # one re-plan per non-retryable condition, then it is final
+                if s.error is not None:
+                    rs.replanned_codes.add(s.error.code)
+                    rs.history.append(
+                        RecoveryAttempt(
+                            s.id, Strategy.REPLAN, "final check failed", s.error.code.value, "final"
+                        )
+                    )
+            await rs.set_status(
+                TaskStatus.RECOVERING, "The request is not satisfied yet; re-planning"
+            )
+            codes = [s.error.code for s in blocking if s.error is not None]
+            await self._replan(rs, ctx, reason, cause=codes[0] if codes else None)
             await rs.set_status(TaskStatus.EXECUTING)
             await self._execute_plan(rs, ctx)
         raise TaskFailure(
@@ -208,11 +244,33 @@ class TaskRunner:
             [],
         )
 
+    def _set_llm_budget(self, rs: RunState) -> None:
+        """Task-aware model-call budget, derived from what the plan can legitimately need.
+
+        calls already made + every pending adaptive step's iterations + an adaptive-recovery
+        allowance for at most two deterministic steps + (plan + one repair) per remaining re-plan
+        + one judgement. Never above the global ``max_llm_calls``.
+        """
+        assert rs.plan is not None
+        lim = self._settings.limits
+        pending = [s for s in rs.plan.steps if s.status is StepStatus.PENDING]
+        adaptive = sum(1 for s in pending if s.kind is StepKind.ADAPTIVE)
+        deterministic = len(pending) - adaptive
+        usage = rs.handle.meter.usage
+        budget = (
+            usage.llm_calls
+            + adaptive * lim.max_adaptive_iterations
+            + min(deterministic, 2) * lim.max_adaptive_iterations
+            + max(0, lim.max_replans - rs.replans_used) * 2
+            + 1
+        )
+        usage.llm_budget = min(lim.max_llm_calls, budget)
+
     async def _execute_plan(self, rs: RunState, ctx: ExecutionContext) -> None:
         assert rs.plan is not None and self._executor is not None
         while True:
             ctx.token.raise_if_cancelled()
-            await ctx.pause.wait_if_paused(ctx.token)
+            await rs.gate()
             self._raise_if_looping(ctx)
             pending = [s for s in rs.plan.steps if s.status is StepStatus.PENDING]
             if not pending:
@@ -242,33 +300,24 @@ class TaskRunner:
                     else AgentError(outcome.fatal.message, code=outcome.fatal.code)
                 )
             if outcome.replan_reason:
-                await self._replan(rs, ctx, outcome.replan_reason)
+                if outcome.replan_code is not None:
+                    rs.replanned_codes.add(outcome.replan_code)
+                await self._replan(rs, ctx, outcome.replan_reason, cause=outcome.replan_code)
                 await rs.set_status(TaskStatus.EXECUTING)
             await self._emit_usage(rs)
 
     # ================================================================== replanning
     @staticmethod
-    def _compose_answer(rs: RunState) -> None:
-        """Fill the user-facing answer from the plan's template and recorded tool outputs (no LLM, no guessing)."""
-        tpl = rs.plan.answer_template if rs.plan else None
-        if rs.answer or not tpl:
-            return
-        try:
-            text = str(resolve(tpl, rs.scope)).strip()
-        except TemplateError:
-            return  # a field that was never produced: no answer is better than an invented one
-        if text:
-            rs.answer = text[:2000]
-
-    @staticmethod
     def _raise_if_looping(ctx: ExecutionContext) -> None:
         if ctx.loop_guard.tripped:
             raise AgentError(ctx.loop_guard.tripped, code=ErrorCode.LOOP_DETECTED)
 
-    async def _replan(self, rs: RunState, ctx: ExecutionContext, reason: str) -> None:
+    async def _replan(
+        self, rs: RunState, ctx: ExecutionContext, reason: str, *, cause: ErrorCode | None = None
+    ) -> None:
         assert rs.plan is not None and self.d.planner is not None
         ctx.token.raise_if_cancelled()  # STOP must prevent a new LLM call and a new plan
-        await ctx.pause.wait_if_paused(ctx.token)
+        await rs.gate()  # so must PAUSE: no re-plan (a model call) while paused
         self._raise_if_looping(ctx)
         rs.replans_used += 1
         rs.handle.meter.usage.replans += 1
@@ -292,20 +341,29 @@ class TaskRunner:
         if outcome.plan is None:
             raise AgentError(
                 f"Cannot continue: {outcome.clarification or 'the planner could not find another way'}",
-                code=ErrorCode.PLAN_INVALID,
+                # the task ends for the reason it needed a re-plan, not as an "invalid plan"
+                code=cause or ErrorCode.VERIFICATION_FAILED,
             )
         for s in rs.plan.steps:  # abandon whatever was still pending in the old plan
             if s.status is StepStatus.PENDING:
                 s.status = StepStatus.SKIPPED
                 s.summary = "Superseded by a revised plan"
+            if s.status is not StepStatus.SUCCEEDED:
+                # The revised plan takes over everything that did not succeed: those steps are no
+                # longer part of what the task must accomplish (and can no longer fail it).
+                s.output = {**(s.output or {}), "superseded": True}
         rs.plan.steps.extend(outcome.plan.steps)
         rs.plan.version = outcome.plan.version
-        if outcome.plan.success_criteria:
-            rs.plan.success_criteria = outcome.plan.success_criteria
+        rs.plan.success_criteria = merge_criteria(
+            rs.plan.success_criteria,
+            outcome.plan.success_criteria,
+            {s.id for s in rs.plan.steps if s.status is StepStatus.SUCCEEDED},
+        )
         if outcome.plan.summary:
             rs.plan.summary = outcome.plan.summary
         if outcome.plan.answer_template:
             rs.plan.answer_template = outcome.plan.answer_template
+        self._set_llm_budget(rs)
         await self.d.repo.save_agent_action(
             AgentActionRecord(
                 task_id=rs.task.id,
@@ -348,7 +406,16 @@ class TaskRunner:
         if specs:
             results = await self._verifier.run(specs, ctx, scope="task")
             return results, all(r.passed for r in results)
-        step_checks = await self.d.repo.list_verifications(rs.task.id)
+        # Only steps that are part of the final outcome count: the failed check of a step that a
+        # revised plan replaced must not fail (or pass) the task.
+        live = {
+            s.id for s in rs.plan.steps if s.status is StepStatus.SUCCEEDED and not is_superseded(s)
+        }
+        step_checks = [
+            r
+            for r in await self.d.repo.list_verifications(rs.task.id)
+            if r.step_id in live and r.method == "deterministic"
+        ]
         if step_checks:  # every step carried its own contract; the latest result per step stands
             latest: dict[str, VerificationResult] = {}
             for r in step_checks:
@@ -362,6 +429,9 @@ class TaskRunner:
     ) -> tuple[list[VerificationResult], bool]:
         """No deterministic contract exists (e.g. a Q&A task): lower-assurance LLM judgement, clearly labelled."""
         assert self.d.gateway is not None
+        await rs.gate()
+        preview = candidate_answer(rs.plan, rs.step_data, rs.step_answers)
+        answer_text = preview.text if preview.status is AnswerStatus.ANSWERED else ""
         await rs.emit(
             EventType.VERIFICATION_STARTED,
             "Judging the outcome (no machine-checkable criteria)",
@@ -376,7 +446,7 @@ class TaskRunner:
         )
         req = LLMRequest(
             system=_JUDGE_SYSTEM,
-            messages=[Message.user(f"<user_request>\n{rs.task.instruction}\n</user_request>\n<evidence>\n{evidence}\nanswer: {(rs.answer or '')[:1500]}\n</evidence>")],
+            messages=[Message.user(f"<user_request>\n{rs.task.instruction}\n</user_request>\n<evidence>\n{evidence}\nanswer: {(answer_text or '')[:1500]}\n</evidence>")],
             max_tokens=400, purpose="verify", temperature=0.0,
         )  # fmt: skip
         verdict = await self.d.gateway.complete_structured(
@@ -418,29 +488,24 @@ class TaskRunner:
             return None
 
     @staticmethod
-    def _blocking_failures(rs: RunState) -> list[PlanStep]:
-        assert rs.plan is not None
-        return [
-            s
-            for s in rs.plan.steps
-            if s.status is StepStatus.FAILED
-            and not s.optional
-            and not (s.output or {}).get("superseded")
-        ]
+    def _is_final(rs: RunState, blocking: list[PlanStep]) -> bool:
+        """Is re-planning pointless? True for conditions that trying again can never change."""
+        for s in blocking:
+            code = s.error.code if s.error else None
+            if code in NON_RETRYABLE_CODES:
+                return True
+            if code in SINGLE_REPLAN_CODES and code in rs.replanned_codes:
+                return True  # the one allowed alternative was already tried
+        return False
 
     @staticmethod
-    def _denied_by_user(failures: list[PlanStep]) -> bool:
-        return any(
-            s.error and s.error.code in (ErrorCode.APPROVAL_DENIED, ErrorCode.APPROVAL_TIMEOUT)
-            for s in failures
-        )
-
-    @staticmethod
-    def _failure_text(
-        rs: RunState, results: list[VerificationResult], blocking: list[PlanStep]
-    ) -> str:
+    def _failure_text(results: list[VerificationResult], blocking: list[PlanStep]) -> str:
         parts = [
-            f"step {s.id} '{s.title}' failed: {s.error.message if s.error else ''}"[:240]
+            (
+                f"step {s.id} '{s.title}' failed: {s.error.message}"
+                if s.error
+                else f"step {s.id} '{s.title}' did not run ({s.summary or s.status.value})"
+            )[:240]
             for s in blocking
         ]
         parts += [
@@ -463,7 +528,7 @@ class TaskRunner:
     # ================================================================== finish
     async def _finalize(
         self, rs: RunState, ctx: ExecutionContext, status: TaskStatus, error: ErrorInfo | None,
-        verification: list[VerificationResult], verified: bool, duration_s: float,
+        verification: list[VerificationResult], passed: bool, duration_s: float,
     ) -> TaskResult:  # fmt: skip
         task = rs.task
         verification = verification or rs.last_verification
@@ -477,12 +542,45 @@ class TaskRunner:
         if self.d.services.vision is not None:
             self.d.services.vision.forget(task.id)
 
-        summary = self._summary(rs, status, error)
+        # ---- authoritative state: nothing below trusts what a model said happened ----------
+        incomplete = incomplete_required_steps(rs.plan)
+        if status is TaskStatus.COMPLETED and (not passed or incomplete):
+            # Cannot happen through _lifecycle; if it ever does, the task did NOT succeed.
+            status = TaskStatus.FAILED
+            error = ErrorInfo(
+                code=ErrorCode.VERIFICATION_FAILED,
+                message="required steps did not complete: "
+                + ", ".join(s.id for s in incomplete)[:200]
+                if incomplete
+                else "final verification did not pass",
+            )
+            passed = False
+        answer = decide_answer(
+            status=status, error=error, verification_passed=passed, plan=rs.plan,
+            step_data=rs.step_data, step_answers=rs.step_answers,
+        )  # fmt: skip
+        vstatus = self._verification_status(status, error, verification, answer)
+        verified = vstatus is VerificationStatus.VERIFIED
+
+        summary = self._summary(rs, status, error, answer, vstatus)
         usage = rs.handle.meter.usage
+        provider = self.d.gateway.provider if self.d.gateway else None
+        metrics = TaskMetrics(
+            task_id=task.id, provider=getattr(provider, "name", None), model=getattr(provider, "model", None),
+            llm_calls=usage.llm_calls, planner_calls=usage.planner_calls, replanner_calls=usage.replanner_calls,
+            repair_calls=usage.repair_calls, answer_generation_calls=usage.answer_generation_calls,
+            tool_calls=usage.tool_calls, recovery_count=usage.recoveries,
+            verification_attempts=usage.verification_attempts,
+            verification_duration=round(usage.verification_duration_ms / 1000, 3),
+            pause_count=usage.pause_count, resume_count=usage.resume_count, vision_calls=usage.vision_calls,
+            task_duration=round(duration_s, 2), final_status=status.value, verified=verified,
+            answer_status=answer.status.value,
+        )  # fmt: skip
         result = TaskResult(
-            status=status, summary=summary, verified=verified and status is TaskStatus.COMPLETED,
-            verification=verification, artifacts=rs.artifacts, error=error, answer=rs.answer,
-            duration_s=round(duration_s, 2), usage=usage,
+            status=status, summary=summary, verified=verified, verification=verification,
+            artifacts=rs.artifacts, error=error, outcome=outcome_of(status, error),
+            verification_status=vstatus, answer_status=answer.status, answer=answer.text,
+            duration_s=round(duration_s, 2), usage=usage, metrics=metrics,
         )  # fmt: skip
         task.result = result
         task.finished_at = utcnow()
@@ -503,29 +601,47 @@ class TaskRunner:
         }[status]
         await rs.emit(event, summary, {"result": result.model_dump(mode="json")})
         self.d.metrics.observe_task_finished(status.value, duration_s, usage)
+        log.info("task_finished", extra={"metrics": metrics.model_dump()})
         return result
 
     @staticmethod
-    def _summary(rs: RunState, status: TaskStatus, error: ErrorInfo | None) -> str:
+    def _verification_status(
+        status: TaskStatus, error: ErrorInfo | None, results: list[VerificationResult],
+        answer: AnswerDecision,
+    ) -> VerificationStatus:  # fmt: skip
+        """VERIFIED only for: COMPLETED + every criterion passed deterministically + all required
+        state present. Every caller reads ``verified`` from this single function."""
+        if status is not TaskStatus.COMPLETED:
+            failed = any(not r.passed for r in results) or (
+                error is not None and error.code is ErrorCode.VERIFICATION_FAILED
+            )
+            return VerificationStatus.FAILED if failed else VerificationStatus.NOT_RUN
+        if answer.status is AnswerStatus.UNAVAILABLE:
+            return VerificationStatus.INCOMPLETE
+        deterministic = bool(results) and all(
+            r.passed and r.method == "deterministic" for r in results
+        )
+        return VerificationStatus.VERIFIED if deterministic else VerificationStatus.JUDGED
+
+    @staticmethod
+    def _summary(
+        rs: RunState, status: TaskStatus, error: ErrorInfo | None, answer: AnswerDecision,
+        vstatus: VerificationStatus,
+    ) -> str:  # fmt: skip
         plan = rs.plan
         if plan is None:
             return f"{status.value}: {error.message if error else 'no plan was produced'}"
         done = [s for s in plan.steps if s.status is StepStatus.SUCCEEDED]
-        failed = [
-            s
-            for s in plan.steps
-            if s.status is StepStatus.FAILED and not (s.output or {}).get("superseded")
-        ]
+        failed = [s for s in plan.steps if s.status is StepStatus.FAILED and not is_superseded(s)]
         skipped = [s for s in plan.steps if s.status is StepStatus.SKIPPED]
-        total = len(
-            [
-                s
-                for s in plan.steps
-                if not (s.status is StepStatus.SKIPPED and s.summary.startswith("Superseded"))
-            ]
-        )
+        total = len([s for s in plan.steps if not is_superseded(s)])
+        completed = {
+            VerificationStatus.VERIFIED: "and the result was verified.",
+            VerificationStatus.JUDGED: "and the outcome was judged by the model (no machine-checkable criteria).",
+            VerificationStatus.INCOMPLETE: "but the requested response data was unavailable.",
+        }.get(vstatus, "")  # fmt: skip
         head = {
-            TaskStatus.COMPLETED: f"Completed: {len(done)}/{total} steps succeeded and the result was verified.",
+            TaskStatus.COMPLETED: f"Completed: {len(done)}/{total} steps succeeded {completed}",
             TaskStatus.CANCELLED: f"Stopped by the user after {len(done)}/{total} steps. Completed actions were NOT undone.",
             TaskStatus.TIMED_OUT: f"Timed out after {len(done)}/{total} steps. Completed actions were NOT undone.",
             TaskStatus.FAILED: f"Failed: {len(done)}/{total} steps succeeded.",
@@ -537,8 +653,8 @@ class TaskRunner:
             lines.append(f"- {s.title}: {s.error.message[:160] if s.error else 'failed'}")
         if skipped and status is not TaskStatus.COMPLETED:
             lines.append(f"{len(skipped)} step(s) were not run.")
-        if rs.answer:
-            lines.append("Answer: " + rs.answer[:600])
+        if answer.status is AnswerStatus.ANSWERED and answer.text:
+            lines.append("Answer: " + answer.text[:600])
         return "\n".join(lines)
 
 

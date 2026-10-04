@@ -36,8 +36,17 @@ fail:     RecoveryEngine.decide(code, phase, history, budgets) →
             FAIL             stop safely
 ```
 
-Terminal errors (`approval_denied/timeout`, `prompt_injection_blocked`, `cancelled`, `kill_switch`, `limit_exceeded`, `unknown_tool`,
-`capability_not_available`) are never recovered. Policy blocks get exactly one re-plan. Each attempt appends a `RecoveryAttempt(reason, error_code, phase)`
+Error classification lives in `app/utils/errors.py` and is shared by the recovery engine and the runner:
+
+* `RETRYABLE_CODES` (`timeout`, `navigation_failed`, `io_error`, `stale_reference`, `llm_error`) — bounded retry / refresh.
+* `NON_RETRYABLE_CODES` (`approval_denied/timeout`, `prompt_injection_blocked`, `cancelled`, `kill_switch`, `limit_exceeded`,
+  `loop_detected`, `unknown_tool`, `capability_not_available`) — never recovered and never re-planned, at step level or at task level.
+* `SINGLE_REPLAN_CODES` (policy/path/command/url blocks, `SEARCH_AUTOMATION_BLOCKED`, `SEARCH_UNAVAILABLE`, `plan_invalid`) — no retry;
+  exactly one re-plan per code per task, a second occurrence is final.
+
+A reference or verification contract that cannot be resolved at run time is `plan_invalid` (one re-plan), not a retryable failure.
+When a deterministic step is recovered adaptively and the user denies an action, recovery ends with `approval_denied`.
+A re-plan can add success criteria but cannot drop ones that are still checkable. Each attempt appends a `RecoveryAttempt(reason, error_code, phase)`
 and emits `recovery_started` with the reason (the UI shows it).
 
 ## Adaptive loop

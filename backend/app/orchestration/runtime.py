@@ -158,24 +158,55 @@ class TaskRuntime:
         self.deps.approvals.cancel_task(task_id)
 
     async def pause(self, task_id: str) -> None:
+        """pause_requested -> (task reaches the gate) status PAUSED -> pause_completed.
+
+        An in-flight tool or model call cannot be interrupted safely; it finishes, then the task
+        parks at the next gate and only then becomes PAUSED. Nothing new starts in between.
+        """
         h = self._handle(task_id)
-        h.pause.pause()
-        task = await self.deps.repo.get_task(task_id)
-        if task and not task.status.is_terminal:
-            task.paused = True
-            await self.deps.repo.save_task(task)
-        await self.deps.bus.publish(
-            task_id, EventType.TASK_PAUSED, "Paused: no further tools will start until resumed", {}
-        )
+        # Under the lock the task cannot park (and announce it) until the request is recorded.
+        async with h.pause_lock:
+            if h.pause.paused:
+                return  # already requested / paused: idempotent
+            h.pause.pause()
+            task = self._live.get(task_id)
+            await self.deps.bus.publish(
+                task_id,
+                EventType.PAUSE_REQUESTED,
+                "Pause requested: no further tool or model call will start",
+                {"status": task.status.value if task else None},
+                Correlation(session_id=task.session_id if task else None, task_id=task_id),
+            )
+            if task is not None and not task.status.is_terminal:
+                task.paused = True
+                await self.deps.repo.save_task(task)
 
     async def resume(self, task_id: str) -> None:
+        """resume_requested -> status restored (persisted) -> gate released -> resume_completed."""
         h = self._handle(task_id)
-        h.pause.resume()
-        task = await self.deps.repo.get_task(task_id)
-        if task and not task.status.is_terminal:
+        if not h.pause.paused:
+            return
+        task = self._live.get(task_id)
+        corr = Correlation(session_id=task.session_id if task else None, task_id=task_id)
+        await self.deps.bus.publish(
+            task_id, EventType.RESUME_REQUESTED, "Resume requested", {}, corr
+        )
+        status = None
+        if h.run_state is not None:
+            status = await h.run_state.leave_pause()  # state first: never RUNNING-while-parked
+        elif task is not None and not task.status.is_terminal:
             task.paused = False
             await self.deps.repo.save_task(task)
-        await self.deps.bus.publish(task_id, EventType.TASK_RESUMED, "Resumed", {})
+            status = task.status
+        h.meter.usage.resume_count += 1
+        h.pause.resume()  # only now may the task continue
+        await self.deps.bus.publish(
+            task_id,
+            EventType.RESUME_COMPLETED,
+            "Resumed",
+            {"status": status.value if status else None},
+            corr,
+        )
 
     async def stop_all(self, reason: str = "STOP AGENT pressed") -> list[str]:
         """Emergency stop: block all tool execution, cancel every task, deny every pending approval."""

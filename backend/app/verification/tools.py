@@ -9,7 +9,26 @@ from pydantic import BaseModel, Field
 from app.models.enums import Capability
 from app.tools.base import Tool, ToolOutput
 from app.tools.context import ExecutionContext
+from app.tools.schema import OutputModel
 from app.verification.checks import REGISTRY, run_checker
+
+
+class CheckLine(OutputModel):
+    passed: bool
+    message: str
+    kind: str | None = None
+
+
+class VerifyOutput(OutputModel):
+    passed: bool
+    message: str | None = Field(default=None, description="verify_file_state only")
+    kind: str | None = Field(default=None, description="verify_file_state only")
+    evidence: dict[str, Any] | None = Field(default=None, description="verify_file_state only")
+    checks: list[CheckLine] | None = Field(default=None, description="one entry per condition")
+
+
+class VerifyArtifacts(OutputModel):
+    verified: bool
 
 
 async def _run(kind: str, params: dict[str, Any], ctx: ExecutionContext) -> ToolOutput:
@@ -34,6 +53,8 @@ class FileStateInput(BaseModel):
 
 class VerifyFileState(Tool[FileStateInput]):
     name = "verify_file_state"
+    Output = VerifyOutput
+    Artifacts = VerifyArtifacts
     description = "Verify a file/folder state: exists, absent, is a directory, or contains text."
     capability = Capability.VERIFICATION
     Input = FileStateInput
@@ -49,9 +70,9 @@ class VerifyFileState(Tool[FileStateInput]):
             "dir": "dir_exists",
         }[args.expect]
         params: dict[str, Any] = {"path": args.path, "wait_s": args.wait_s}
-        if args.text is not None:
-            params["text"] = args.text
-        if args.min_bytes is not None:
+        if args.expect == "contains":
+            params["text"] = args.text or ""
+        if args.min_bytes is not None and args.expect == "exists":
             params["min_bytes"] = args.min_bytes
         return await _run(kind, params, ctx)
 
@@ -68,6 +89,8 @@ class BrowserStateInput(BaseModel):
 
 class VerifyBrowserState(Tool[BrowserStateInput]):
     name = "verify_browser_state"
+    Output = VerifyOutput
+    Artifacts = VerifyArtifacts
     description = "Verify the browser state: URL/title/visible text/element presence (all given conditions must hold)."
     capability = Capability.VERIFICATION
     Input = BrowserStateInput
@@ -109,6 +132,8 @@ class DesktopStateInput(BaseModel):
 
 class VerifyDesktopState(Tool[DesktopStateInput]):
     name = "verify_desktop_state"
+    Output = VerifyOutput
+    Artifacts = VerifyArtifacts
     description = "Verify desktop state via UI Automation: window open/closed, control exists, enabled, or contains a value."
     capability = Capability.VERIFICATION
     Input = DesktopStateInput
@@ -151,6 +176,8 @@ class TaskResultInput(BaseModel):
 
 class VerifyTaskResult(Tool[TaskResultInput]):
     name = "verify_task_result"
+    Output = VerifyOutput
+    Artifacts = VerifyArtifacts
     description = f"Verify several conditions at once. Kinds: {', '.join(sorted(REGISTRY))}."
     capability = Capability.VERIFICATION
     Input = TaskResultInput

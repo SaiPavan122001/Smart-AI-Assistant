@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable
+from collections.abc import Awaitable, Callable
 from typing import TypeVar
 
 from app.utils.errors import ErrorCode, TaskCancelled
@@ -99,6 +99,9 @@ class PauseGate:
     def __init__(self) -> None:
         self._open = asyncio.Event()
         self._open.set()
+        # Called when a task actually reaches the gate while it is closed (it "parks"). The owner
+        # uses it to move the task into the PAUSED state before anything waits.
+        self.on_park: Callable[[], Awaitable[None]] | None = None
 
     @property
     def paused(self) -> bool:
@@ -111,6 +114,12 @@ class PauseGate:
         self._open.set()
 
     async def wait_if_paused(self, token: CancelToken | None = None) -> None:
+        if self._open.is_set():
+            return
+        if token is not None:
+            token.raise_if_cancelled()
+        if self.on_park is not None:
+            await self.on_park()
         while not self._open.is_set():
             if token is not None:
                 token.raise_if_cancelled()

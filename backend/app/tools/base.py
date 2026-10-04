@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 
 from app.models.enums import ApprovalRequirement, Capability, RiskLevel
 from app.models.tool import AuditPolicy, RetryPolicy, RiskAssessment, ToolSpec
+from app.tools.schema import describe
 
 if TYPE_CHECKING:
     from app.tools.context import ExecutionContext
@@ -42,10 +43,20 @@ class Tool(ABC, Generic[InT]):
     audit: ClassVar[AuditPolicy] = AuditPolicy()
     exposed_to_llm: ClassVar[bool] = True
     returns_external_content: ClassVar[bool] = False
-    output_schema: ClassVar[dict[str, Any]] = {}
-    returns: ClassVar[str] = (
-        ""  # one-line shape of `data` for plan references, e.g. 'matches[{path,name}], scanned'
-    )
+    # The output contract. ``Output`` describes ``ToolOutput.data`` and ``Artifacts`` describes
+    # ``ToolOutput.artifacts``. They are the single source of truth: the planner's catalogue,
+    # plan validation of ``{{steps.sN.data.x}}`` references and the router's contract check are
+    # all derived from them. A tool without ``Output`` produces nothing a plan may reference.
+    Output: ClassVar[type[BaseModel] | None] = None
+    Artifacts: ClassVar[type[BaseModel] | None] = None
+
+    @classmethod
+    def output_schema(cls) -> dict[str, Any]:
+        return cls.Output.model_json_schema() if cls.Output is not None else {}
+
+    @classmethod
+    def artifacts_schema(cls) -> dict[str, Any]:
+        return cls.Artifacts.model_json_schema() if cls.Artifacts is not None else {}
 
     @classmethod
     def spec(cls) -> ToolSpec:
@@ -53,8 +64,9 @@ class Tool(ABC, Generic[InT]):
             name=cls.name,
             description=cls.description,
             input_schema=cls.Input.model_json_schema(),
-            output_schema=cls.output_schema,
-            returns=cls.returns,
+            output_schema=cls.output_schema(),
+            artifacts_schema=cls.artifacts_schema(),
+            returns=describe(cls.output_schema()),
             capability=cls.capability,
             risk=cls.risk,
             approval=cls.approval,

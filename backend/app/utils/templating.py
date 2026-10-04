@@ -39,6 +39,32 @@ def _lookup(path: str, scope: dict[str, Any]) -> Any:
     return cur
 
 
+REF_PATTERN = _REF
+lookup = _lookup
+
+
+def template_refs(value: Any) -> list[str]:
+    """Every reference path (``steps.s1.data.title``) used anywhere in ``value``, in order."""
+    out: list[str] = []
+    if isinstance(value, str):
+        out.extend(m.group(1) for m in _REF.finditer(value))
+    elif isinstance(value, dict):
+        for v in value.values():
+            out.extend(template_refs(v))
+    elif isinstance(value, list):
+        for v in value:
+            out.extend(template_refs(v))
+    return out
+
+
+def full_reference(value: Any) -> str | None:
+    """The path when ``value`` is exactly one reference (its resolved value keeps its type)."""
+    if isinstance(value, str):
+        m = _FULL.match(value)
+        return m.group(1) if m else None
+    return None
+
+
 def has_template(value: Any) -> bool:
     if isinstance(value, str):
         return bool(_REF.search(value))

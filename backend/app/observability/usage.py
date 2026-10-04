@@ -7,6 +7,16 @@ from app.models.task import UsageStats
 from app.observability.metrics import Metrics
 from app.utils.errors import ErrorCode, LimitExceeded
 
+# LLMRequest.purpose -> the UsageStats counter it is accounted under.
+_PURPOSE_COUNTERS = {
+    "plan": "planner_calls",
+    "replan": "replanner_calls",
+    "repair": "repair_calls",
+    "step": "step_calls",
+    "verify": "judge_calls",
+    "answer": "answer_generation_calls",
+}
+
 
 class UsageMeter:
     def __init__(
@@ -25,8 +35,11 @@ class UsageMeter:
 
     # ---- guards (raise LimitExceeded *before* the resource is consumed) ----
     def guard_llm(self) -> None:
-        if self.usage.llm_calls >= self.limits.max_llm_calls:
-            raise self._limit("llm calls", self.limits.max_llm_calls)
+        cap = self.limits.max_llm_calls
+        if 0 < self.usage.llm_budget < cap:
+            cap = self.usage.llm_budget  # task-aware budget derived from the plan
+        if self.usage.llm_calls >= cap:
+            raise self._limit("llm calls", cap)
 
     def guard_vision(self) -> None:
         if self.usage.vision_calls >= self.limits.max_vision_calls:
@@ -54,6 +67,9 @@ class UsageMeter:
     ) -> float:
         u = self.usage
         u.llm_calls += 1
+        counter = _PURPOSE_COUNTERS.get(purpose)
+        if counter:
+            setattr(u, counter, getattr(u, counter) + 1)
         u.input_tokens += input_tokens
         u.output_tokens += output_tokens
         u.llm_latency_ms += latency_ms
