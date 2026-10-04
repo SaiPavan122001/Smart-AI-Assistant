@@ -1,0 +1,240 @@
+// Types mirroring the backend contracts (backend/app/models, backend/app/api/schemas.py).
+
+export type TaskStatus =
+  | "CREATED"
+  | "PLANNING"
+  | "WAITING_APPROVAL"
+  | "EXECUTING"
+  | "RECOVERING"
+  | "VERIFYING"
+  | "COMPLETED"
+  | "FAILED"
+  | "CANCELLED"
+  | "TIMED_OUT";
+
+export const TERMINAL_STATUSES: readonly TaskStatus[] = ["COMPLETED", "FAILED", "CANCELLED", "TIMED_OUT"];
+export const isTerminal = (s: TaskStatus): boolean => TERMINAL_STATUSES.includes(s);
+
+export type StepStatus = "PENDING" | "RUNNING" | "WAITING_APPROVAL" | "SUCCEEDED" | "FAILED" | "SKIPPED";
+export type RiskLevel = 1 | 2 | 3 | 4;
+export const RISK_LABEL: Record<RiskLevel, string> = { 1: "low", 2: "medium", 3: "high", 4: "critical" };
+
+export interface ErrorInfo {
+  code: string;
+  message: string;
+  retryable: boolean;
+  details: Record<string, unknown>;
+}
+
+export interface UsageStats {
+  llm_calls: number;
+  vision_calls: number;
+  tool_calls: number;
+  actions: number;
+  shell_operations: number;
+  retries: number;
+  recoveries: number;
+  replans: number;
+  approvals: number;
+  input_tokens: number;
+  output_tokens: number;
+  llm_latency_ms: number;
+  estimated_cost_usd: number;
+  cache_hits: number;
+  verification_failures: number;
+}
+
+export interface VerificationSpec {
+  kind: string;
+  params: Record<string, unknown>;
+  description: string;
+}
+
+export interface VerificationResult {
+  id: string;
+  step_id: string | null;
+  kind: string;
+  passed: boolean;
+  description: string;
+  message: string;
+  method: string;
+  evidence: Record<string, unknown>;
+}
+
+export interface PlanStep {
+  id: string;
+  title: string;
+  kind: "tool" | "adaptive";
+  tool: string | null;
+  args: Record<string, unknown>;
+  goal: string | null;
+  depends_on: string[];
+  rationale: string;
+  verify: VerificationSpec[];
+  optional: boolean;
+  status: StepStatus;
+  attempts: number;
+  summary: string;
+  error: ErrorInfo | null;
+}
+
+export interface Plan {
+  id: string;
+  version: number;
+  summary: string;
+  assumptions: string[];
+  steps: PlanStep[];
+  success_criteria: VerificationSpec[];
+}
+
+export interface TaskResult {
+  status: TaskStatus;
+  summary: string;
+  verified: boolean;
+  verification: VerificationResult[];
+  artifacts: Record<string, unknown>;
+  error: ErrorInfo | null;
+  answer: string | null;
+  duration_s: number;
+  usage: UsageStats;
+}
+
+export interface TaskSummary {
+  id: string;
+  instruction: string;
+  status: TaskStatus;
+  paused: boolean;
+  created_at: string;
+  updated_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+  current_step_id: string | null;
+  current_tool: string | null;
+  current_application: string | null;
+  usage: UsageStats;
+  summary: string | null;
+  verified: boolean | null;
+}
+
+export interface Task extends Omit<TaskSummary, "summary" | "verified"> {
+  plan: Plan | null;
+  result: TaskResult | null;
+}
+
+export type ApprovalScope = "once" | "task";
+export type ApprovalStatus = "PENDING" | "APPROVED" | "DENIED" | "EXPIRED" | "CANCELLED";
+
+export interface ApprovalRequest {
+  id: string;
+  task_id: string;
+  step_id: string | null;
+  tool_call_id: string;
+  tool: string;
+  action: string;
+  reason: string;
+  resource: string;
+  risk: RiskLevel;
+  risk_explanation: string[];
+  arguments: Record<string, unknown>;
+  allowed_scopes: ApprovalScope[];
+  tainted: boolean;
+  status: ApprovalStatus;
+  category: string;
+  created_at: string;
+  expires_at: string | null;
+  decided_at: string | null;
+  decision_note: string | null;
+  scope_granted: ApprovalScope | null;
+}
+
+export type EventType =
+  | "task_created" | "planning_started" | "plan_created" | "plan_revised" | "step_started" | "step_completed"
+  | "step_failed" | "tool_selected" | "approval_required" | "approval_granted" | "approval_denied"
+  | "action_started" | "action_completed" | "action_failed" | "observation_received" | "injection_detected"
+  | "recovery_started" | "recovery_completed" | "verification_started" | "verification_completed"
+  | "usage_updated" | "status_changed" | "task_paused" | "task_resumed" | "task_completed" | "task_failed"
+  | "task_cancelled" | "task_timed_out" | "limit_reached" | "kill_switch";
+
+export interface Correlation {
+  request_id?: string | null;
+  session_id?: string | null;
+  task_id?: string | null;
+  plan_id?: string | null;
+  step_id?: string | null;
+  tool_call_id?: string | null;
+}
+
+export interface ExecutionEvent {
+  id: string;
+  task_id: string;
+  seq: number;
+  type: EventType;
+  timestamp: string;
+  correlation: Correlation;
+  message: string;
+  data: Record<string, unknown>;
+}
+
+export interface LogEntry {
+  id: string;
+  task_id: string | null;
+  level: string;
+  component: string;
+  message: string;
+  data: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface ToolCallRecord {
+  call: { id: string; tool: string; args: Record<string, unknown>; step_id: string | null; rationale: string };
+  result: { ok: boolean; summary: string; duration_ms: number; error: ErrorInfo | null; untrusted: boolean; cached: boolean } | null;
+  assessment: { risk: RiskLevel; action: string; resource: string; category: string } | null;
+  decision: string;
+  decision_reason: string;
+}
+
+export type Action = "allow" | "ask" | "deny";
+
+export interface TrustedOperation {
+  tool: string;
+  resource_glob: string;
+  max_risk: RiskLevel;
+  note: string;
+}
+
+export interface PermissionPolicy {
+  risk_actions: Record<string, Action>;
+  tool_overrides: Record<string, Action>;
+  category_overrides: Record<string, Action>;
+  trusted_operations: TrustedOperation[];
+  disabled_capabilities: string[];
+  version: number;
+}
+
+export interface ToolSpec {
+  name: string;
+  description: string;
+  capability: string;
+  risk: RiskLevel;
+  approval: string;
+  timeout_s: number;
+  idempotent: boolean;
+  read_only: boolean;
+}
+
+export interface AgentStatus {
+  kill_switch_engaged: boolean;
+  kill_switch_reason: string;
+  active_tasks: string[];
+  pending_approvals: number;
+}
+
+export interface TaskList {
+  items: TaskSummary[];
+  limit: number;
+  offset: number;
+}
+
+export interface ApiErrorBody {
+  error: { code: string; message: string; request_id?: string | null; details?: Record<string, unknown> };
+}
