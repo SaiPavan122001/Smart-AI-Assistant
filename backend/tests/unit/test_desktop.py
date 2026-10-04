@@ -259,3 +259,10 @@ def test_scoring_prefers_automation_id_then_exact_name() -> None:
     ]
     ranked = score_ui(els, "Run", "button", None)
     assert ranked[0][1].ref == "b" and [e.ref for _, e in score_ui(els, None, None, "run")] == ["b"]
+
+
+def test_default_tree_depth_covers_uwp_apps() -> None:
+    """Regression: Calculator's controls sit ~10 levels deep; depth 6 made the real app look empty."""
+    from app.config.settings import DesktopSettings
+
+    assert DesktopSettings().max_tree_depth >= 12

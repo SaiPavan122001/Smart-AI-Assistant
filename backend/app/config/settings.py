@@ -83,7 +83,7 @@ class FilesystemSettings(BaseModel):
 class DesktopSettings(BaseModel):
     enabled: bool = True
     max_tree_elements: int = 150
-    max_tree_depth: int = 6
+    max_tree_depth: int = 12
     # name -> executable (resolved on PATH or absolute). Only these can be launched.
     apps: dict[str, str] = Field(
         default_factory=lambda: {
