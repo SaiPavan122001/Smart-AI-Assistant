@@ -31,6 +31,51 @@ Mapping of the delivery phases to what exists in the repository. Status: ✅ imp
 | 24 | API (versioned, validated) | ✅ | `app/api` · [OpenAPI](docs/api/openapi.json) | API tests, docs-sync |
 | 25 | Production readiness: format, lint, types, all suites, migrations, build | ✅ | `scripts/check.ps1`, CI | see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
 
-## Suggested next increments
+## Single-user hardening iterations (completed)
 
-See "Recommended next improvements" in [PROJECT_STATUS.md](PROJECT_STATUS.md).
+| Iteration | Scope | Status | Where |
+|---|---|---|---|
+| Execution-loop fix | action ledger, loop guard, idempotent start | ✅ | [docs/execution-loop-fix.md](docs/execution-loop-fix.md) |
+| Step 7 campaign | broader live validation, findings F1–F8 | ✅ | [docs/single-user-validation.md](docs/single-user-validation.md) |
+| P0/P1 correctness + efficiency | truthful answers, output-schema validation, verification polling, `verified` integrity, recovery classification, `PAUSED` state, search error contract, official-source check, call accounting | ✅ | [docs/fixes/](docs/fixes), [docs/verification.md](docs/verification.md), [docs/pause-resume.md](docs/pause-resume.md), [docs/search-errors.md](docs/search-errors.md), [docs/agent-efficiency.md](docs/agent-efficiency.md) |
+| v0.1.0 gate | full live regression (18 scenarios), final review, checkpoint | ✅ | [docs/releases/v0.1.0-single-user-core.md](docs/releases/v0.1.0-single-user-core.md) |
+
+**Checkpoint: Single-User Core v0.1.0 (`v0.1.0-single-user-core`).** Everything above is done; do not redo it.
+
+## Next-phase backlog (nothing below is started)
+
+Work starts from the checkpoint. The live gate in [PROJECT_STATUS.md](PROJECT_STATUS.md) is the regression set for every phase:
+it must keep passing and its numbers are the baseline.
+
+### NEXT-A — Complex single-user workflows  ← recommended next
+
+* Long, multi-application tasks (10+ steps, browser + files + desktop in one task); measure completion, calls and recoveries.
+* Reduce adaptive-loop cost: one model call per action today (dynamic page 8 calls, blocked-search fallback 14).
+* Answer completeness for free-text (adaptive) answers; stronger link between the request and the success criteria.
+* Exercise stale-reference recovery and sparse UI Automation apps (Electron) live.
+* Survive a process restart: resume or cleanly re-queue a task instead of marking it FAILED.
+
+### NEXT-B — Multi-model / provider comparison
+
+* Run the live gate against at least a second model and a second provider; record the same metrics per model.
+* Live runs of the Anthropic, Gemini and plain OpenAI adapters (wire-format tested only today); Brave/Tavily with real keys.
+
+### NEXT-C — Production hardening (still single-user)
+
+* Sandbox approved child processes; tamper-evident audit; retention for events, tool calls and observations.
+* TLS / reverse-proxy guidance, rate limiting, per-client tokens; packaging and installer; choose a license.
+* Execute the Docker Compose PostgreSQL setup and the CI workflow.
+
+### NEXT-D — Multi-user architecture
+
+* Accounts, authentication and authorisation, per-user data isolation, per-user policy and secrets.
+
+### NEXT-E — Distributed computer workers
+
+* A worker per controlled machine, task routing, remote approvals, worker health and recovery.
+
+### NEXT-F — Scalability and load testing
+
+* Load and soak tests, queueing and back-pressure, horizontal scaling of the API tier, capacity baselines.
+
+Also deferred, to be placed when prioritised: scheduled/recurring tasks, job-application automation, large-scale research workflows.

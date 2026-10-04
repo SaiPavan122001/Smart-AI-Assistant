@@ -1,7 +1,7 @@
 {
   "id": "S1",
   "title": "File organization",
-  "instruction": "In the folder C:\\Users\\Pavan\\SmartAIAssistant\\validation\\step7\\org find the Java PDFs and move them into a Java folder.",
+  "instruction": "In the folder %USERPROFILE%\\SmartAIAssistant\\validation\\step7\\org find the Java PDFs and move them into a Java folder.",
   "status": "COMPLETED",
   "expected_status": "COMPLETED",
   "status_ok": true,
@@ -63,14 +63,14 @@
       "tool",
       "fs_search",
       "SUCCEEDED",
-      "2 match(es) under C:\\Users\\Pavan\\SmartAIAssistant\\validation\\step7\\org"
+      "2 match(es) under %USERPROFILE%\\SmartAIAssistant\\validation\\step7\\org"
     ],
     [
       "s2",
       "tool",
       "fs_create",
       "SUCCEEDED",
-      "Created folder: C:\\Users\\Pavan\\SmartAIAssistant\\validation\\step7\\org\\Java"
+      "Created folder: %USERPROFILE%\\SmartAIAssistant\\validation\\step7\\org\\Java"
     ],
     [
       "s3",

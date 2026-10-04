@@ -1,0 +1,46 @@
+# Decisions
+
+Index of the decisions that shape the code. Architecture decisions have full records in [docs/adr](docs/adr); the entries below them
+were made during the single-user hardening iterations and are recorded here with a pointer to the document that explains them.
+Add new decisions to this file; do not re-open accepted ones without a new entry that says why.
+
+## Architecture decision records
+
+| # | Decision |
+|---|---|
+| [0001](docs/adr/0001-modular-monolith.md) | Modular monolith, no extra infrastructure |
+| [0002](docs/adr/0002-perception-hierarchy.md) | Structured perception first; vision is an explicit, metered fallback |
+| [0003](docs/adr/0003-playwright-library-not-mcp.md) | Playwright as a library; no MCP layer |
+| [0004](docs/adr/0004-permission-engine-boundary.md) | Router + permission engine as the only path to the computer |
+| [0005](docs/adr/0005-untrusted-data-and-taint.md) | External content is data; deterministic detection + taint + provenance |
+| [0006](docs/adr/0006-plans-deterministic-steps.md) | Plans of deterministic steps with bounded adaptive steps |
+| [0007](docs/adr/0007-event-sourced-ui.md) | Event-sourced UI over WebSocket with sequence replay |
+| [0008](docs/adr/0008-postgres-sqlalchemy-alembic.md) | PostgreSQL + SQLAlchemy async + Alembic, behind a repository port |
+| [0009](docs/adr/0009-controlled-terminal.md) | No shell: parsed, classified, allowlisted commands |
+| [0010](docs/adr/0010-llm-provider-abstraction.md) | Provider-agnostic LLM interface over plain HTTP |
+| [0011](docs/adr/0011-verification-contracts.md) | Declarative verification contracts; success is observed, not assumed |
+
+## Decisions from the single-user hardening (v0.1.0)
+
+| # | Decision | Why | Detail |
+|---|---|---|---|
+| D1 | One task at a time (`max_concurrent_tasks = 1`); task start is idempotent | two tasks would drive the same keyboard/desktop; a double submit must not run twice | [execution-loop-fix](docs/execution-loop-fix.md) |
+| D2 | Per-task action ledger: a succeeded state-establishing action is replayed, never re-executed; loops trip `loop_detected` and are final | a verification false-negative must not re-launch an app | [execution-loop-fix](docs/execution-loop-fix.md) |
+| D3 | The final answer is decided once, from final state, by code; a non-COMPLETED task never gets a success answer | a FAILED task returned "has been deleted" | [f2-truthful-answers](docs/fixes/f2-truthful-answers.md) |
+| D4 | `status`/`outcome`, `verification_status` and `answer_status` are separate fields with validated invariants | "some text exists" was read as "the task succeeded" | [f2-truthful-answers](docs/fixes/f2-truthful-answers.md) |
+| D5 | Tool output models (`Tool.Output`) are the single source of truth for the planner catalogue, plan validation and the router contract check | hand-written output descriptions drifted and the model guessed fields | [f1-planner-output-schema](docs/fixes/f1-planner-output-schema.md) |
+| D6 | An invalid plan gets exactly one repair round, then `PLAN_INVALID` | no planner loops | [f1-planner-output-schema](docs/fixes/f1-planner-output-schema.md) |
+| D7 | A re-plan may add success criteria but cannot drop ones that are still checkable (user-goal preservation) | a re-plan swapped "file renamed" for "another file exists" and ended verified | [f2-truthful-answers](docs/fixes/f2-truthful-answers.md) |
+| D8 | Retry classification lives in one place (`utils/errors.py`): retryable / non-retryable / single re-plan | step-level and task-level recovery disagreed | [agent-loop](docs/architecture/agent-loop.md) |
+| D9 | A user denial is final; during adaptive recovery of a deterministic step it ends the recovery. A planned adaptive step may continue without the denied action | recovery asked for three more approvals after a denial | [f2-truthful-answers](docs/fixes/f2-truthful-answers.md) |
+| D10 | Verification polls with an immediate first check, a 10 s cap (30 s downloads), backoff, and early exits; it is never replaced by LLM judgement | ~30 s per attempt on conditions that could not change | [verification](docs/verification.md) |
+| D11 | `PAUSED` is a persisted status entered cooperatively at a gate; status is restored before the gate opens; no PAUSING/RESUMING status | UI must never show running while parked; an in-flight call cannot be interrupted safely | [pause-resume](docs/pause-resume.md) |
+| D12 | Search errors are `SEARCH_UNAVAILABLE` / `SEARCH_AUTOMATION_BLOCKED`; provider strings are metadata only; a bot check is never bypassed or retried | behaviour must not depend on provider strings | [search-errors](docs/search-errors.md) |
+| D13 | "Official" is a deterministic https-domain check against requested/trusted domains; a model may not assert it | results were called official because they looked authoritative | [search-errors](docs/search-errors.md) |
+| D14 | Adaptive loops execute several tool calls per model response in order and stop the batch at the first failure | one model call per click | [agent-efficiency](docs/agent-efficiency.md) |
+| D15 | Local persistence for single-user use is SQLite or PostgreSQL through the same repository port; no migration was added for per-row verification metrics (they live in the result JSON) | avoid schema churn at the checkpoint | [verification](docs/verification.md) |
+
+## Explicitly deferred (not decided against, not built)
+
+Multi-user and multi-tenancy, distributed or multi-machine workers, load balancing / autoscaling / Kubernetes, scheduled or recurring
+tasks, multi-model benchmarking, complex long-horizon workflow coverage. See [PHASE_PLAN.md](PHASE_PLAN.md).

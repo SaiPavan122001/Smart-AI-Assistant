@@ -59,8 +59,11 @@ These are real gaps, listed so you can decide whether the residual risk is accep
    vision fallback is used, screenshots. Redaction is pattern-based and cannot recognise arbitrary free-form secrets.
 7. **Audit rows are not tamper-evident** (an administrator with database access can alter them).
 8. **UI Automation reads on-screen content.** Password-like fields are masked by heuristics only.
-9. **Real LLM providers were verified against recorded wire formats, not live endpoints** (no API keys in the development environment);
-   run a smoke test with your key before relying on it. See [PROJECT_STATUS.md](PROJECT_STATUS.md).
+9. **Only one live model was exercised.** The single-user validation campaigns ran against `openai/gpt-4.1` through OpenRouter. The
+   Anthropic, Gemini and plain OpenAI adapters are verified against recorded wire formats only; run a smoke test with your key and
+   model before relying on it. See [PROJECT_STATUS.md](PROJECT_STATUS.md).
+10. **"Official source" means "on the stated domain".** The check is deterministic, but the domain comes from the request,
+    configuration or the planner; see [docs/search-errors.md](docs/search-errors.md).
 
 ## Hardening checklist for a real deployment
 

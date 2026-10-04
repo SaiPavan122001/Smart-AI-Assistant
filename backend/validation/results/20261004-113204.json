@@ -2,7 +2,7 @@
   {
     "id": "G",
     "title": "Organize Java PDFs",
-    "instruction": "In the folder C:\\Users\\Pavan\\SmartAIAssistant\\validation\\org find the Java PDFs and move them into a Java folder.",
+    "instruction": "In the folder %USERPROFILE%\\SmartAIAssistant\\validation\\org find the Java PDFs and move them into a Java folder.",
     "status": "FAILED",
     "expected_status": "COMPLETED",
     "status_ok": false,
@@ -147,7 +147,7 @@
         "tool",
         "fs_create",
         "SUCCEEDED",
-        "Created folder: C:\\Users\\Pavan\\SmartAIAssistant\\validation\\org\\Java"
+        "Created folder: %USERPROFILE%\\SmartAIAssistant\\validation\\org\\Java"
       ],
       [
         "s9",

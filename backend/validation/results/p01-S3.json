@@ -1,0 +1,201 @@
+{
+  "id": "L",
+  "title": "Pause/resume",
+  "instruction": "Open Chrome and visit these pages one after another, reporting each page title: http://127.0.0.1:60390/doc/alpha, http://127.0.0.1:60390/doc/beta, http://127.0.0.1:60390/doc/gamma, http://127.0.0.1:60390/doc/delta, http://127.0.0.1:60390/doc/epsilon",
+  "status": "COMPLETED",
+  "expected_status": "COMPLETED",
+  "status_ok": true,
+  "verified": true,
+  "outcome": "COMPLETED",
+  "verification_status": "VERIFIED",
+  "answer_status": "ANSWERED",
+  "summary": "Completed: 5/5 steps succeeded and the result was verified.\nAnswer: Page titles in order: 1. alpha, 2. beta, 3. gamma, 4. delta, 5. epsilon",
+  "answer": "Page titles in order: 1. alpha, 2. beta, 3. gamma, 4. delta, 5. epsilon",
+  "calls_by_purpose": {
+    "planner": 1,
+    "replanner": 0,
+    "repair": 0,
+    "step": 0,
+    "judge": 0,
+    "answer_generation": 0
+  },
+  "replans": 0,
+  "verification": {
+    "attempts": 6,
+    "polls": 6,
+    "duration_s": 0.05,
+    "success_time_s": 0.05,
+    "failures": 0
+  },
+  "pause_resume_events": [
+    "pause_requested",
+    "status:PAUSED",
+    "pause_completed",
+    "resume_requested",
+    "status:EXECUTING",
+    "resume_completed"
+  ],
+  "plan_invalid_details": null,
+  "error": null,
+  "llm_calls": 1,
+  "llm_budget": 8,
+  "llm_ok": true,
+  "vision_calls": 0,
+  "tool_calls": 5,
+  "tools": [
+    [
+      "browser_open",
+      "ok"
+    ],
+    [
+      "browser_navigate",
+      "ok"
+    ],
+    [
+      "browser_navigate",
+      "ok"
+    ],
+    [
+      "browser_navigate",
+      "ok"
+    ],
+    [
+      "browser_navigate",
+      "ok"
+    ]
+  ],
+  "duration_s": 24.6,
+  "recoveries": 0,
+  "recovery_events": [],
+  "input_tokens": 6169,
+  "output_tokens": 1086,
+  "llm_latency_ms": 5885,
+  "cost_usd": 0.021,
+  "approvals": [],
+  "injection_events": 0,
+  "event_types": [
+    "action_completed",
+    "action_started",
+    "pause_completed",
+    "pause_requested",
+    "plan_created",
+    "planning_started",
+    "resume_completed",
+    "resume_requested",
+    "status_changed",
+    "step_completed",
+    "step_started",
+    "task_completed",
+    "task_created",
+    "tool_selected",
+    "usage_updated",
+    "verification_completed",
+    "verification_started"
+  ],
+  "plan_steps": [
+    [
+      "s1",
+      "tool",
+      "browser_open",
+      "SUCCEEDED",
+      "Browser open: alpha \u2014 http://127.0.0.1:60390/doc/alpha"
+    ],
+    [
+      "s2",
+      "tool",
+      "browser_navigate",
+      "SUCCEEDED",
+      "Navigated: beta \u2014 http://127.0.0.1:60390/doc/beta"
+    ],
+    [
+      "s3",
+      "tool",
+      "browser_navigate",
+      "SUCCEEDED",
+      "Navigated: gamma \u2014 http://127.0.0.1:60390/doc/gamma"
+    ],
+    [
+      "s4",
+      "tool",
+      "browser_navigate",
+      "SUCCEEDED",
+      "Navigated: delta \u2014 http://127.0.0.1:60390/doc/delta"
+    ],
+    [
+      "s5",
+      "tool",
+      "browser_navigate",
+      "SUCCEEDED",
+      "Navigated: epsilon \u2014 http://127.0.0.1:60390/doc/epsilon"
+    ]
+  ],
+  "paused_flag": true,
+  "persisted_status_while_paused": "PAUSED",
+  "calls_started_while_paused": 0,
+  "llm_calls_while_paused": 0,
+  "events_while_paused": 0,
+  "task_id": "task_f497f21fa2d04195",
+  "model": "openrouter/openai/gpt-4.1",
+  "launch_tool_calls": 1,
+  "replayed_calls": 0,
+  "loop_guard_triggered": false,
+  "identical_side_effect_repeats": {},
+  "approvals_db": [],
+  "permission_decisions": [
+    {
+      "tool": "browser_open",
+      "via": "policy",
+      "action": "allow"
+    },
+    {
+      "tool": "browser_navigate",
+      "via": "policy",
+      "action": "allow"
+    },
+    {
+      "tool": "browser_navigate",
+      "via": "policy",
+      "action": "allow"
+    },
+    {
+      "tool": "browser_navigate",
+      "via": "policy",
+      "action": "allow"
+    },
+    {
+      "tool": "browser_navigate",
+      "via": "policy",
+      "action": "allow"
+    }
+  ],
+  "window_events": [
+    {
+      "t": 11.0,
+      "ev": "OPEN",
+      "hwnd": 15337312,
+      "proc": "chrome.exe",
+      "title": "Untitled - Google Chrome"
+    },
+    {
+      "t": 24.6,
+      "ev": "CLOSE",
+      "hwnd": 15337312,
+      "proc": "chrome.exe",
+      "title": "epsilon - Google Chrome"
+    }
+  ],
+  "real_opens": {
+    "chrome.exe": 1,
+    "notepad.exe": 0,
+    "calculatorapp.exe": 0,
+    "calc.exe": 0
+  },
+  "real_closes": {
+    "chrome.exe": 1,
+    "notepad.exe": 0,
+    "calculatorapp.exe": 0,
+    "calc.exe": 0
+  },
+  "vision_calls_db": 0,
+  "wall_s": 26.9
+}

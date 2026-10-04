@@ -1,0 +1,127 @@
+{
+  "id": "H2",
+  "title": "Delete + ALLOW once",
+  "instruction": "Delete old-backup.zip from my test folder %USERPROFILE%\\SmartAIAssistant\\validation\\del.",
+  "status": "COMPLETED",
+  "expected_status": "COMPLETED",
+  "status_ok": true,
+  "verified": true,
+  "outcome": "COMPLETED",
+  "verification_status": "VERIFIED",
+  "answer_status": "ANSWERED",
+  "summary": "Completed: 1/1 steps succeeded and the result was verified.\nAnswer: The file old-backup.zip has been deleted from %USERPROFILE%\\SmartAIAssistant\\validation\\del.",
+  "answer": "The file old-backup.zip has been deleted from %USERPROFILE%\\SmartAIAssistant\\validation\\del.",
+  "calls_by_purpose": {
+    "planner": 1,
+    "replanner": 0,
+    "repair": 0,
+    "step": 0,
+    "judge": 0,
+    "answer_generation": 0
+  },
+  "replans": 0,
+  "verification": {
+    "attempts": 2,
+    "polls": 2,
+    "duration_s": 0.0,
+    "success_time_s": 0.0,
+    "failures": 0
+  },
+  "pause_resume_events": [],
+  "plan_invalid_details": null,
+  "error": null,
+  "llm_calls": 1,
+  "llm_budget": 8,
+  "llm_ok": true,
+  "vision_calls": 0,
+  "tool_calls": 1,
+  "tools": [
+    [
+      "fs_delete",
+      "ok"
+    ]
+  ],
+  "duration_s": 5.0,
+  "recoveries": 0,
+  "recovery_events": [],
+  "input_tokens": 6182,
+  "output_tokens": 409,
+  "llm_latency_ms": 3015,
+  "cost_usd": 0.0156,
+  "approvals": [
+    {
+      "tool": "fs_delete",
+      "action": "Delete file %USERPROFILE%\\SmartAIAssistant\\validation\\del\\old-backup.zip",
+      "risk": "high",
+      "reason": "This step deletes the specified file as requested by the user.",
+      "resource": "%USERPROFILE%\\SmartAIAssistant\\validation\\del\\old-backup.zip",
+      "tainted": false,
+      "decision": "approved"
+    }
+  ],
+  "injection_events": 0,
+  "event_types": [
+    "action_completed",
+    "action_started",
+    "approval_granted",
+    "approval_required",
+    "plan_created",
+    "planning_started",
+    "status_changed",
+    "step_completed",
+    "step_started",
+    "task_completed",
+    "task_created",
+    "tool_selected",
+    "usage_updated",
+    "verification_completed",
+    "verification_started"
+  ],
+  "plan_steps": [
+    [
+      "s1",
+      "tool",
+      "fs_delete",
+      "SUCCEEDED",
+      "Moved old-backup.zip to the Recycle Bin"
+    ]
+  ],
+  "file_deleted": true,
+  "approval_count": 1,
+  "task_id": "task_464d600f6d114d6e",
+  "model": "openrouter/openai/gpt-4.1",
+  "launch_tool_calls": 0,
+  "replayed_calls": 0,
+  "loop_guard_triggered": false,
+  "identical_side_effect_repeats": {},
+  "approvals_db": [
+    {
+      "tool": "fs_delete",
+      "action": "Delete file %USERPROFILE%\\SmartAIAssistant\\validation\\del\\old-backup.zip",
+      "status": "APPROVED",
+      "scope": "once"
+    }
+  ],
+  "permission_decisions": [
+    {
+      "tool": "fs_delete",
+      "via": "policy",
+      "action": "ask"
+    }
+  ],
+  "window_events": [],
+  "real_opens": {
+    "calculatorapp.exe": 0,
+    "chrome.exe": 0,
+    "calc.exe": 0,
+    "notepad.exe": 0
+  },
+  "real_closes": {
+    "calculatorapp.exe": 0,
+    "chrome.exe": 0,
+    "calc.exe": 0,
+    "notepad.exe": 0
+  },
+  "vision_calls_db": 0,
+  "wall_s": 7.1
+}

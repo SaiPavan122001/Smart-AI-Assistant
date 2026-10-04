@@ -14,8 +14,11 @@ state of your computer**, and shows you the complete history.
 
 It is a modular monolith: Python 3.11+ / FastAPI backend, React + TypeScript UI, PostgreSQL, Playwright, Windows UI Automation.
 
-> **Status:** feature-complete and heavily tested (see [PROJECT_STATUS.md](PROJECT_STATUS.md) for exactly what was verified,
-> what was not, and known limitations). Read [SECURITY.md](SECURITY.md) before pointing it at a machine you care about.
+> **Release: Single-User Core v0.1.0.** THIS RELEASE IS SINGLE-USER: one person, one Windows machine, one task at a time, bound to
+> loopback. It is not multi-user, multi-tenant, distributed, horizontally scalable or highly available, and it does not schedule
+> recurring tasks. See [PROJECT_STATUS.md](PROJECT_STATUS.md) for exactly what was verified, what was not, and known limitations,
+> and [the release notes](docs/releases/v0.1.0-single-user-core.md). Read [SECURITY.md](SECURITY.md) before pointing it at a machine
+> you care about.
 
 ---
 
@@ -89,7 +92,7 @@ docker compose -f infra/docker/docker-compose.yml up -d --wait
 * **Agent core** — provider-agnostic LLM interface (OpenAI, Anthropic, Gemini, OpenRouter, any OpenAI-compatible endpoint; you choose provider and model), structured plans validated
   before execution (tools exist, args fit the schema, references resolve), deterministic + adaptive steps, bounded retries,
   re-planning, resource limits (time, actions, LLM/vision calls, retries, tabs, shell operations), pause/resume/cancel.
-* **Tools** — 40+ typed tools in six capabilities; see the generated [tool catalogue](docs/tools/catalog.md).
+* **Tools** — 39 typed tools in seven capabilities, each with a declared input and output schema; see the generated [tool catalogue](docs/tools/catalog.md).
 * **Browser agent (Playwright)** — isolated context per task, DOM/aria perception, ref-based targeting with stale-ref detection and
   re-resolution, popups/tabs, downloads (HTTP API first, click fallback, SSRF-guarded redirects), upload disabled by default,
   per-page state cache, screenshots only through the vision tools.
@@ -106,6 +109,31 @@ docker compose -f infra/docker/docker-compose.yml up -d --wait
 * **Observability** — structured JSON logs with correlation IDs and mandatory secret redaction, Prometheus metrics, LLM/vision/tool
   accounting and cost estimates, per-task execution logs.
 * **UI** — live event-sourced timeline, specific approval dialogs, always-visible STOP AGENT, history, task details, logs, permissions, settings.
+
+## Providers, search and vision
+
+* **LLM** — set `SAA_LLM__PROVIDER` (`openai`, `anthropic`, `gemini`, `openrouter`, `openai_compatible`), `SAA_LLM__MODEL` and
+  `SAA_LLM__API_KEY`. `python -m app llm-check` verifies that the model can plan and call tools. The live validation of this release
+  used `openai/gpt-4.1` through OpenRouter; other providers are verified against recorded wire formats only.
+  See [docs/development/adding-llm-providers.md](docs/development/adding-llm-providers.md).
+* **Search** — the `web_search` tool tries `SAA_SEARCH__PROVIDERS` in order (`brave`, `tavily` need `BRAVE_API_KEY` /
+  `TAVILY_API_KEY`; `duckduckgo` is keyless and best effort). A bot check in the browser is detected and never bypassed; the agent
+  falls back to `web_search`. "Official" results are verified by domain. See [docs/web-search.md](docs/web-search.md) and
+  [docs/search-errors.md](docs/search-errors.md).
+* **Vision** — optional fallback configured with `SAA_VISION__PROVIDER` / `SAA_VISION__MODEL`; used only when DOM/accessibility and
+  UI Automation cannot answer, metered and confidence-gated.
+
+## Limitations of this release
+
+* Single user, single machine, one task at a time; token auth on loopback, no TLS, no per-user accounts.
+* Desktop automation is Windows-only.
+* Validated live with one model on a fixed set of short tasks. Long multi-step workflows, other models and unattended operation
+  are not validated.
+* `verified` proves the plan's success criteria, not that the criteria fully express the request.
+* Prompt-injection detection is heuristic; approved code runs with your privileges.
+* A task does not survive a process restart (it is marked FAILED honestly).
+
+Full list: [PROJECT_STATUS.md](PROJECT_STATUS.md) and [SECURITY.md](SECURITY.md).
 
 ## Platform support
 
@@ -137,6 +165,15 @@ secrets are masked everywhere they could be persisted; external content cannot g
 * Frontend: Vitest unit/component tests and Playwright E2E against the real backend.
 
 See [docs/development/testing.md](docs/development/testing.md).
+
+### How results are reported
+
+A task result has three separate facts: `status` (plus a finer `outcome` such as `DENIED` or `PLAN_INVALID`), `verification_status`
+and `answer_status`. `answer` is a success answer only when `answer_status` is `ANSWERED`; for a task that did not complete it is a
+plain statement of what did not happen. `verified` is true only for a completed task whose criteria all passed deterministically.
+Details: [truthful answers](docs/fixes/f2-truthful-answers.md) · [plan/output-schema validation](docs/fixes/f1-planner-output-schema.md) ·
+[verification](docs/verification.md) · [pause/resume](docs/pause-resume.md) · [search errors and official sources](docs/search-errors.md) ·
+[efficiency](docs/agent-efficiency.md) · [single-user validation](docs/single-user-validation.md).
 
 ## Configuration
 

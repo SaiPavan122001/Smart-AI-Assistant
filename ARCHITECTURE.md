@@ -3,6 +3,14 @@
 This document describes the system **as implemented**. Sections link to deeper documents in [`docs/architecture`](docs/architecture)
 and to the decisions behind them in [`docs/adr`](docs/adr).
 
+**Release:** Single-User Core v0.1.0. One user, one machine, one task at a time. Nothing here is multi-user or distributed.
+
+```
+User ─▶ React dashboard ─▶ REST / WebSocket API ─▶ Task Runtime ─▶ Planner (LLM → validated plan)
+     ─▶ Step Executor ─▶ Tool Router ─▶ Permission Engine (+ approval) ─▶ Tool ─▶ Observation
+     ─▶ Verification ─▶ final TaskResult (status · verification_status · answer_status)
+```
+
 ## 1. Shape: a modular monolith with hard internal boundaries
 
 One Python process (FastAPI) hosts everything; modules depend inward only through explicit interfaces (`Protocol`/ABC + dependency
@@ -22,13 +30,15 @@ app/
                   structured-output repair), scripted test adapter
   security/       PathPolicy, command classifier, URL/SSRF policy, injection scanner + taint guard, entity extraction
   permissions/    PermissionPolicy, PermissionEngine (pure decision function), ApprovalManager
-  tools/          Tool base, registry, router (the only path to the computer), filesystem/terminal/browser/desktop/vision/
-                  verification tools, perception cache usage
+  search/         SearchProvider adapters (Brave, Tavily, DuckDuckGo) and SearchRouter (ordered fallback, attempts recorded)
+  tools/          Tool base, registry, router (the only path to the computer), filesystem/terminal/browser/desktop/search/vision/
+                  verification tools, output contracts (schema.py), action ledger + loop guard, perception cache usage
   perception/     ObservationCache (per-task cache, capability versions, duplicate suppression)
   verification/   checkers (declarative contracts) + engine
   recovery/       error-code → strategy table, bounded, reasoned
-  planner/        prompts, plan generation, deterministic plan validation + repair
-  agent/          StepExecutor (execute → observe → evaluate → recover), AdaptiveRunner (bounded LLM tool loop), RunState/TaskHandle
+  planner/        prompts, plan generation, deterministic plan validation (references.py: field paths + types) + one repair
+  agent/          StepExecutor (execute → observe → evaluate → recover), AdaptiveRunner (bounded LLM tool loop), RunState/TaskHandle,
+                  answer.py (final answer decided from final state)
   orchestration/  TaskRunner (lifecycle), TaskRuntime (concurrency, pause/cancel/STOP)
   state/          task state machine, repository port, in-memory repository, EventBus, per-task log sink
   database/       SQLAlchemy models, SqlRepository, Alembic migrations
@@ -49,7 +59,8 @@ Understand ─▶ Plan ─▶ Validate plan ─▶ Select capability ─▶ Perm
 ```
 
 * **Plan** — one structured LLM call produces `PlanDraft`. `validate_plan` rejects (and the planner repairs once) unknown tools,
-  args that do not fit the tool's input schema, forward/unknown references, unknown verification kinds, > 25 steps.
+  args that do not fit the tool's input schema, forward/unknown references, references to output fields the tool does not declare,
+  type mismatches, invalid verification kinds/parameters, contradictory success criteria, > 25 steps.
 * **Steps** are `tool` (fixed tool + args; **zero LLM calls at run time**) or `adaptive` (a bounded LLM tool-calling loop for steps
   whose next action is unknowable up front). Arguments can reference earlier outputs (`{{steps.s3.artifacts.path}}`), resolved
   by deterministic code.
@@ -60,7 +71,16 @@ Understand ─▶ Plan ─▶ Validate plan ─▶ Select capability ─▶ Perm
 * **Verify** runs `success_criteria` deterministically. If a request has no machine-checkable contract (e.g. "summarize"), a clearly
   labelled lower-assurance LLM judgement is used and the result carries `verified=false`.
 
-More: [docs/architecture/agent-loop.md](docs/architecture/agent-loop.md).
+* **Plan contracts are checked before execution.** Every tool declares its output as a pydantic model (`Tool.Output`); the planner's
+  catalogue, the validation of `{{steps.sN.data.x}}` references (existence and type) and the router's contract check all derive from
+  it. Verification parameters are validated against the checker's parameter model. An invalid plan gets one repair round, then
+  `plan_invalid`. See [docs/fixes/f1-planner-output-schema.md](docs/fixes/f1-planner-output-schema.md).
+* **The final answer is derived from final state**, never from what a model said happened: `TaskResult` carries `status`/`outcome`,
+  `verification_status` and `answer_status` separately, and only a COMPLETED task whose required steps and answer fields are all
+  present gets a success answer. See [docs/fixes/f2-truthful-answers.md](docs/fixes/f2-truthful-answers.md) and
+  [docs/verification.md](docs/verification.md).
+
+More: [docs/architecture/agent-loop.md](docs/architecture/agent-loop.md) · [docs/agent-efficiency.md](docs/agent-efficiency.md).
 
 ## 3. Perception hierarchy
 
@@ -93,13 +113,30 @@ See [docs/architecture/permissions.md](docs/architecture/permissions.md) and [do
 ## 5. State, events, persistence
 
 * **State machine** (`state/machine.py`): `CREATED → PLANNING → EXECUTING ⇄ (WAITING_APPROVAL | RECOVERING | VERIFYING) → COMPLETED`,
-  plus `FAILED | CANCELLED | TIMED_OUT`. Terminal states are final; illegal transitions raise.
+  plus `FAILED | CANCELLED | TIMED_OUT`. Any active state can go to `PAUSED` and back ([docs/pause-resume.md](docs/pause-resume.md)).
+  Terminal states are final; illegal transitions raise.
 * **Event sourcing for the UI**: every important thing is an `ExecutionEvent` with a per-task sequence number and correlation IDs
   (`request_id, session_id, task_id, plan_id, step_id, tool_call_id`). The UI rebuilds the timeline purely from events; WebSocket clients
   resume with `?after_seq=N`. See [docs/architecture/realtime-events.md](docs/architecture/realtime-events.md).
 * **PostgreSQL** (SQLAlchemy 2 async + Alembic): `users, sessions, tasks, plans, task_steps, agent_actions, tool_calls, observations,
   permissions (policy + decision audit), approvals, execution_logs, verification_results, task_events`. A repository port with three
   implementations (memory, SQLite, PostgreSQL) shares one contract test suite. See [docs/architecture/state-model.md](docs/architecture/state-model.md).
+
+### Search and vision
+
+* **Search** — `web_search` → `SearchRouter` → configured providers in order (Brave, Tavily, DuckDuckGo). All providers failing is
+  `SEARCH_UNAVAILABLE`. A site operated in the browser that shows a bot check raises `SEARCH_AUTOMATION_BLOCKED`: never solved,
+  never retried, one re-plan to another source. Officialness of a result is a deterministic domain check.
+  See [docs/web-search.md](docs/web-search.md), [docs/search-errors.md](docs/search-errors.md).
+* **Vision** — a separate provider setting (`SAA_VISION__*`), used only through `vision_capture` + `vision_analyze`, metered by
+  `max_vision_calls`, gated by a confidence threshold.
+
+### Loop safety
+
+Per-task action ledger (`tools/loop_guard.py`): an identical state-establishing action that already succeeded is replayed, not
+re-executed; repeated identical actions, action cycles and no-progress streaks trip `loop_detected`, after which no tool, recovery or
+re-plan runs. Task start is idempotent (same instruction while running, or same `Idempotency-Key`) and `max_concurrent_tasks = 1`.
+See [docs/execution-loop-fix.md](docs/execution-loop-fix.md).
 
 ## 6. Cost and latency controls
 

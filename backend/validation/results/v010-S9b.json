@@ -1,0 +1,107 @@
+{
+  "id": "S9b",
+  "title": "Search provider unavailable",
+  "instruction": "Search the web for Java Spring Boot official documentation and tell me the URL of the top result.",
+  "status": "FAILED",
+  "expected_status": "FAILED",
+  "status_ok": true,
+  "verified": false,
+  "outcome": "FAILED",
+  "verification_status": "NOT_RUN",
+  "answer_status": "WITHHELD",
+  "summary": "Failed: 0/0 steps succeeded.\nReason: Cannot continue: Web search is unavailable due to missing API configuration. Please configure a search provider (BRAVE_API_KEY or TAVILY_API_KEY) or specify if you want to manually open a search engine in the browser.",
+  "answer": "The task could not be completed. Reason: Cannot continue: Web search is unavailable due to missing API configuration. Please configure a search provider (BRAVE_API_KEY or TAVILY_API_KEY) or specify if you want to manually open a search engine in the browser.",
+  "calls_by_purpose": {
+    "planner": 1,
+    "replanner": 1,
+    "repair": 1,
+    "step": 0,
+    "judge": 0,
+    "answer_generation": 0
+  },
+  "replans": 1,
+  "verification": {
+    "attempts": 0,
+    "polls": 0,
+    "duration_s": 0.0,
+    "success_time_s": 0.0,
+    "failures": 0
+  },
+  "pause_resume_events": [],
+  "plan_invalid_details": null,
+  "error": "Cannot continue: Web search is unavailable due to missing API configuration. Please configure a search provider (BRAVE_API_KEY or TAVILY_API_KEY) or specify if you want to manually open a search engine in the browser.",
+  "llm_calls": 3,
+  "llm_budget": 8,
+  "llm_ok": true,
+  "vision_calls": 0,
+  "tool_calls": 1,
+  "tools": [
+    [
+      "web_search",
+      "SEARCH_UNAVAILABLE"
+    ]
+  ],
+  "duration_s": 9.0,
+  "recoveries": 1,
+  "recovery_events": [
+    "replan"
+  ],
+  "input_tokens": 19313,
+  "output_tokens": 810,
+  "llm_latency_ms": 7138,
+  "cost_usd": 0.0451,
+  "approvals": [],
+  "injection_events": 0,
+  "event_types": [
+    "action_failed",
+    "action_started",
+    "plan_created",
+    "planning_started",
+    "recovery_completed",
+    "recovery_started",
+    "status_changed",
+    "step_failed",
+    "step_started",
+    "task_created",
+    "task_failed",
+    "tool_selected"
+  ],
+  "plan_steps": [
+    [
+      "s1",
+      "tool",
+      "web_search",
+      "FAILED",
+      "Failed: Web search is unavailable (brave: not_configured: no BRAVE_API_KEY configured). Configure a search API key (BRAVE_API_KEY or TAVILY_API_KEY) or try agai"
+    ]
+  ],
+  "task_id": "task_349f8481188d4b0c",
+  "model": "openrouter/openai/gpt-4.1",
+  "launch_tool_calls": 0,
+  "replayed_calls": 0,
+  "loop_guard_triggered": false,
+  "identical_side_effect_repeats": {},
+  "approvals_db": [],
+  "permission_decisions": [
+    {
+      "tool": "web_search",
+      "via": "policy",
+      "action": "allow"
+    }
+  ],
+  "window_events": [],
+  "real_opens": {
+    "calculatorapp.exe": 0,
+    "calc.exe": 0,
+    "notepad.exe": 0,
+    "chrome.exe": 0
+  },
+  "real_closes": {
+    "calculatorapp.exe": 0,
+    "calc.exe": 0,
+    "notepad.exe": 0,
+    "chrome.exe": 0
+  },
+  "vision_calls_db": 0,
+  "wall_s": 11.2
+}
