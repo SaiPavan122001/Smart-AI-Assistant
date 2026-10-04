@@ -7,6 +7,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from app.llm.capabilities import ModelCapabilities
+
 
 class TextBlock(BaseModel):
     type: Literal["text"] = "text"
@@ -24,6 +26,9 @@ class ToolUseBlock(BaseModel):
     id: str
     name: str
     input: dict[str, Any] = Field(default_factory=dict)
+    # Opaque, adapter-owned data that must be echoed back on the next turn (e.g. Gemini thought signatures).
+    # The agent runtime never reads it.
+    provider_state: dict[str, Any] = Field(default_factory=dict)
 
 
 class ToolResultBlock(BaseModel):
@@ -89,6 +94,7 @@ class LLMProvider(ABC):
 
     name: str = "abstract"
     model: str = ""
+    capabilities: ModelCapabilities = ModelCapabilities()
 
     @abstractmethod
     async def complete(self, request: LLMRequest) -> LLMResponse: ...

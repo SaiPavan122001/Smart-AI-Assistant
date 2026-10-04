@@ -15,6 +15,7 @@ import os
 import platform
 import shutil
 import sys
+from collections.abc import Callable
 from typing import Any
 
 from app.config.settings import Settings, get_settings
@@ -148,6 +149,54 @@ def _has_browser(channel: str) -> bool:
     return any(os.path.exists(p) for p in paths) or shutil.which(channel) is not None
 
 
+def llm_check(vision: bool) -> int:
+    from app.llm.check import run_check
+    from app.llm.factory import build_llm_provider
+
+    settings = get_settings()
+    provider = build_llm_provider(settings)
+    if provider is None:
+        print(
+            f"error: provider '{settings.llm.provider}' is not configured (missing API key?)",
+            file=sys.stderr,
+        )
+        return 2
+
+    async def go() -> int:
+        try:
+            rep = await run_check(provider, vision=vision)
+        finally:
+            await provider.aclose()
+        print(f"provider={rep.provider} model={rep.model}")
+        print("capabilities: " + ", ".join(f"{k}={v}" for k, v in rep.capabilities.items()))
+        for w in rep.warnings:
+            print(f"  note: {w}")
+        for pr in rep.probes:
+            print(
+                f"[{'PASS' if pr.ok else 'FAIL'}] {pr.name:42} {pr.latency_ms:7.0f} ms  in={pr.input_tokens} out={pr.output_tokens}  {pr.detail}"
+            )
+        print(
+            "\nRESULT: "
+            + (
+                "the model can power the agent"
+                if rep.ok
+                else "the model FAILED conformance; do not use it for real tasks"
+            )
+        )
+        return 0 if rep.ok else 1
+
+    return asyncio.run(go())
+
+
+def print_providers() -> int:
+    from app.llm.registry import get_provider_spec, provider_names
+
+    for n in provider_names():
+        sp = get_provider_spec(n)
+        print(f"{n:18} keys: {', '.join(sp.key_env) or '(none)':32} {sp.description}")
+    return 0
+
+
 def print_tools() -> int:
     from app.container import build_container
 
@@ -218,13 +267,21 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("migrate", help="apply database migrations")
     sub.add_parser("doctor", help="check the environment")
     sub.add_parser("tools", help="list tools")
+    sub.add_parser("providers", help="list supported LLM providers")
+    lc = sub.add_parser(
+        "llm-check", help="run live conformance probes against the configured model"
+    )
+    lc.add_argument("--vision", action="store_true", help="also test image input")
     args: Any = ap.parse_args(argv)
-    return {
+    commands: dict[str, Callable[[], int]] = {
         "serve": lambda: serve(args.host, args.port),
         "migrate": migrate,
         "doctor": doctor,
         "tools": print_tools,
-    }[args.cmd]()
+        "providers": print_providers,
+        "llm-check": lambda: llm_check(args.vision),
+    }
+    return commands[args.cmd]()
 
 
 if __name__ == "__main__":

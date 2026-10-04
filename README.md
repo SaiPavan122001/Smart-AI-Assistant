@@ -86,7 +86,7 @@ docker compose -f infra/docker/docker-compose.yml up -d --wait
 
 ## Features
 
-* **Agent core** — provider-agnostic LLM interface (Anthropic and any OpenAI-compatible endpoint), structured plans validated
+* **Agent core** — provider-agnostic LLM interface (OpenAI, Anthropic, Gemini, OpenRouter, any OpenAI-compatible endpoint; you choose provider and model), structured plans validated
   before execution (tools exist, args fit the schema, references resolve), deterministic + adaptive steps, bounded retries,
   re-planning, resource limits (time, actions, LLM/vision calls, retries, tabs, shell operations), pause/resume/cancel.
 * **Tools** — 40+ typed tools in six capabilities; see the generated [tool catalogue](docs/tools/catalog.md).

@@ -18,8 +18,8 @@ Map the neutral `LLMRequest` (system, messages made of `TextBlock/ImageBlock/Too
 * **Usage**: fill `input_tokens/output_tokens` (cost accounting and budgets rely on them).
 * Accept an injectable `httpx.AsyncClient` so tests can use `httpx.MockTransport`.
 
-2. Wire it in `llm/factory.py::build_llm_provider` and add the provider name to `LLMSettings.provider` (`Literal[...]`). Document env vars in `.env.example` (a test checks every documented variable exists).
+2. Register it with `register_provider(ProviderSpec(...))` in `llm/registry.py`, add the name to `ProviderName` in `config/settings.py`, and add model families to `llm/capabilities.py` if needed. Add a case to the cross-provider conformance test in `tests/unit/test_providers.py`. Document env vars in `.env.example` (a test checks every documented variable exists).
 3. Test with recorded wire formats like `tests/unit/test_llm.py` (request mapping, response mapping, structured output, retry/error redaction).
 4. Smoke-test against the real endpoint with your key before use: run a trivial task and the eval suite in *live* mode if you add one.
 
-The vision path reuses the same interface (`ImageBlock`); `container._build_vision_provider` maps `vision.provider`.
+The vision path reuses the same interface (`ImageBlock`); `llm/factory.py::build_vision_provider` maps `vision.provider`.

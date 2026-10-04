@@ -5,19 +5,19 @@ from __future__ import annotations
 import asyncio
 import os
 import secrets
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from alembic import command
 from alembic.config import Config
 
-from app.config.secrets import build_secret_provider
 from app.config.settings import Settings, get_settings
 from app.database.repository import SqlRepository
 from app.database.session import create_engine, create_session_factory, is_memory_url
 from app.llm.base import LLMProvider
-from app.llm.factory import build_llm_provider
+from app.llm.capabilities import require_for_agent
+from app.llm.factory import build_llm_provider, build_vision_provider
 from app.llm.gateway import LLMGateway
 from app.observability.logging import configure_logging, get_logger
 from app.observability.metrics import Metrics
@@ -38,6 +38,7 @@ from app.tools.registry import ToolRegistry
 from app.tools.router import ToolRouter
 from app.tools.vision.service import LLMVisionProvider, VisionService
 from app.utils.control import KillSwitch
+from app.utils.errors import LLMError
 
 log = get_logger("container")
 BACKEND_DIR = Path(__file__).resolve().parents[1]
@@ -59,6 +60,8 @@ class Container:
     gateway: LLMGateway | None
     api_token: str
     log_sink: TaskLogSink
+    warnings: list[str] = field(default_factory=list)
+    llm_problem: str | None = None
     llm: LLMProvider | None = None
     _owned_providers: tuple[LLMProvider, ...] = ()
 
@@ -199,14 +202,27 @@ def build_container(
     llm_provider = llm if llm is not None else build_llm_provider(settings)
     owned: list[LLMProvider] = [llm_provider] if (llm_provider is not None and llm is None) else []
     gateway = LLMGateway(llm_provider) if llm_provider is not None else None
+    warnings: list[str] = []
+    llm_problem: str | None = None
+    if llm_provider is not None:
+        try:
+            warnings += require_for_agent(llm_provider.capabilities, model=llm_provider.model)
+        except LLMError as exc:  # unusable model: tasks fail early with this explanation
+            llm_problem = exc.message
 
     vision = None
     if settings.vision.enabled:
         v_provider = vision_llm
         if v_provider is None and settings.vision.provider != "none":
-            v_provider = _build_vision_provider(settings, llm_provider)
+            v_provider = build_vision_provider(settings)
             if v_provider is not None and v_provider is not llm_provider:
                 owned.append(v_provider)
+        if v_provider is not None and not v_provider.capabilities.supports_vision:
+            warnings.append(
+                f"Vision model '{v_provider.model}' ({v_provider.name}) does not support images; vision tools are disabled. "
+                "Set SAA_VISION__PROVIDER/MODEL to a vision-capable model."
+            )
+            v_provider = None
         if v_provider is not None:
             vision = VisionService(
                 LLMVisionProvider(LLMGateway(v_provider)),
@@ -252,31 +268,7 @@ def build_container(
     return Container(
         settings=settings, repo=repo, bus=bus, registry=registry, engine=perm_engine, approvals=approvals, router=router,
         metrics=metrics, services=services, kill_switch=kill, runtime=runtime, gateway=gateway, api_token=token,
-        log_sink=TaskLogSink(repo), llm=llm_provider, _owned_providers=tuple(owned),
+        log_sink=TaskLogSink(repo),
+        warnings=warnings,
+        llm_problem=llm_problem, llm=llm_provider, _owned_providers=tuple(owned),
     )  # fmt: skip
-
-
-def _build_vision_provider(settings: Settings, main: LLMProvider | None) -> LLMProvider | None:
-    from app.llm.anthropic import AnthropicProvider
-    from app.llm.openai import OpenAIProvider
-
-    v = settings.vision
-    secrets = build_secret_provider(
-        settings.secrets.provider, keyring_service=settings.secrets.keyring_service
-    )
-    key = v.api_key.get_secret_value() if v.api_key else None
-    if v.provider == "anthropic":
-        key = (
-            key
-            or (
-                settings.llm.api_key.get_secret_value()
-                if settings.llm.api_key and settings.llm.provider == "anthropic"
-                else None
-            )
-            or secrets.get("ANTHROPIC_API_KEY")
-        )
-        return AnthropicProvider(api_key=key, model=v.model, base_url=v.base_url) if key else None
-    if v.provider == "openai":
-        key = key or secrets.get("OPENAI_API_KEY") or ("local" if v.base_url else None)
-        return OpenAIProvider(api_key=key, model=v.model, base_url=v.base_url) if key else None
-    return None

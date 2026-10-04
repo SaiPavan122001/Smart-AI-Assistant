@@ -13,6 +13,7 @@ from app.agent.adaptive import AdaptiveRunner
 from app.agent.executor import StepExecutor
 from app.agent.state import RunState, TaskHandle
 from app.llm.base import LLMRequest, Message
+from app.llm.capabilities import require_for_agent
 from app.llm.gateway import LLMGateway
 from app.models.enums import EventType, StepStatus, TaskStatus
 from app.models.plan import Plan, PlanStep
@@ -132,6 +133,12 @@ class TaskRunner:
                 code=ErrorCode.NOT_AVAILABLE,
             )  # fmt: skip
         task = rs.task
+        provider = self.d.gateway.provider if self.d.gateway else None
+        if provider is not None:
+            for w in require_for_agent(
+                provider.capabilities, model=provider.model
+            ):  # raises if the model cannot power the agent
+                log.warning("model capability note", extra={"note": w})
         # ---- Understand + Plan -------------------------------------------------------
         await rs.set_status(TaskStatus.PLANNING)
         await rs.emit(EventType.PLANNING_STARTED, "Understanding the request and planning")

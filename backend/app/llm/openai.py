@@ -1,4 +1,4 @@
-"""OpenAI-compatible Chat Completions provider (OpenAI, Azure gateways, Ollama, vLLM, ...)."""
+"""OpenAI Chat Completions adapter. Also the base for OpenRouter and any OpenAI-compatible endpoint."""
 
 from __future__ import annotations
 
@@ -18,12 +18,17 @@ from app.llm.base import (
     ToolResultBlock,
     ToolUseBlock,
 )
+from app.llm.capabilities import ModelCapabilities, resolve_capabilities
 from app.llm.http import post_json
-from app.llm.structured import extract_json
+from app.llm.structured import extract_json, schema_instruction
+from app.utils.errors import LLMError
+from app.utils.redact import redact_text
+
+DEFAULT_BASE_URL = "https://api.openai.com/v1"
 
 
-def _messages_to_wire(request: LLMRequest) -> list[dict[str, Any]]:
-    out: list[dict[str, Any]] = [{"role": "system", "content": request.system}]
+def _messages_to_wire(request: LLMRequest, system: str) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = [{"role": "system", "content": system}]
     for m in request.messages:
         if m.role == "assistant":
             text = "".join(b.text for b in m.content if isinstance(b, TextBlock))
@@ -41,7 +46,6 @@ def _messages_to_wire(request: LLMRequest) -> list[dict[str, Any]]:
                 msg["tool_calls"] = calls
             out.append(msg)
             continue
-        # user turn: tool results become role=tool messages; the rest is a user message
         parts: list[dict[str, Any]] = []
         for b in m.content:
             if isinstance(b, ToolResultBlock):
@@ -61,6 +65,8 @@ def _messages_to_wire(request: LLMRequest) -> list[dict[str, Any]]:
 
 
 class OpenAIProvider(LLMProvider):
+    """Chat Completions wire format. ``name`` identifies the concrete service (openai, openrouter, ...)."""
+
     name = "openai"
 
     def __init__(
@@ -71,21 +77,30 @@ class OpenAIProvider(LLMProvider):
         base_url: str | None = None,
         timeout_s: float = 90.0,
         client: httpx.AsyncClient | None = None,
+        extra_headers: dict[str, str] | None = None,
+        capabilities: ModelCapabilities | None = None,
+        name: str | None = None,
     ) -> None:
         self.model = model
+        if name:
+            self.name = name
+        self.capabilities = capabilities or resolve_capabilities(model)
         self._api_key = api_key
-        self._url = (base_url or "https://api.openai.com/v1").rstrip("/") + "/chat/completions"
+        self._url = (base_url or DEFAULT_BASE_URL).rstrip("/") + "/chat/completions"
+        self._extra_headers = extra_headers or {}
         self._client = client or httpx.AsyncClient(timeout=timeout_s)
         self._owns_client = client is None
 
     async def complete(self, request: LLMRequest) -> LLMResponse:
-        payload: dict[str, Any] = {
-            "model": self.model,
-            "messages": _messages_to_wire(request),
-            "temperature": request.temperature,
-            "max_tokens": request.max_tokens,
-        }
-        if request.tools and request.response_schema is None:
+        caps = self.capabilities
+        system = request.system
+        payload: dict[str, Any] = {"model": self.model}
+        if caps.supports_temperature:
+            payload["temperature"] = request.temperature
+        payload[caps.max_tokens_param] = request.max_tokens
+
+        structured = request.response_schema is not None
+        if request.tools and not structured:
             payload["tools"] = [
                 {
                     "type": "function",
@@ -104,15 +119,20 @@ class OpenAIProvider(LLMProvider):
                     "type": "function",
                     "function": {"name": request.tool_choice},
                 }
-        if request.response_schema is not None:
-            payload["response_format"] = {
-                "type": "json_schema",
-                "json_schema": {
-                    "name": request.response_schema_name,
-                    "schema": request.response_schema,
-                    "strict": False,
-                },
-            }
+        if structured:
+            assert request.response_schema is not None
+            if caps.supports_json_schema:
+                payload["response_format"] = {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": request.response_schema_name,
+                        "schema": request.response_schema,
+                        "strict": False,
+                    },
+                }
+            else:  # compatibility mode: instruct + validate/repair downstream (never trusted unvalidated)
+                system = system + "\n\n" + schema_instruction(request.response_schema)
+        payload["messages"] = _messages_to_wire(request, system)
 
         started = time.perf_counter()
         data = await post_json(
@@ -121,11 +141,24 @@ class OpenAIProvider(LLMProvider):
             headers={
                 "authorization": f"Bearer {self._api_key}",
                 "content-type": "application/json",
+                **self._extra_headers,
             },
             payload=payload,
         )
         latency_ms = (time.perf_counter() - started) * 1000
 
+        if data.get("error") and not data.get(
+            "choices"
+        ):  # some gateways return errors with HTTP 200
+            err = (
+                data["error"]
+                if isinstance(data["error"], dict)
+                else {"message": str(data["error"])}
+            )
+            raise LLMError(
+                f"{self.name} error: {redact_text(str(err.get('message', err))[:300])}",
+                retryable=False,
+            )
         choice = (data.get("choices") or [{}])[0]
         message = choice.get("message", {})
         text = message.get("content") or ""
@@ -134,22 +167,30 @@ class OpenAIProvider(LLMProvider):
             fn = call.get("function", {})
             try:
                 args = json.loads(fn.get("arguments") or "{}")
+                if not isinstance(args, dict):
+                    args = {"_raw": fn.get("arguments", "")}
             except json.JSONDecodeError:
-                args = {"_raw": fn.get("arguments", "")}
+                args = {
+                    "_raw": fn.get("arguments", "")
+                }  # malformed JSON from the model: router validation rejects it
             tool_uses.append(
-                ToolUseBlock(id=call.get("id", ""), name=fn.get("name", ""), input=args)
+                ToolUseBlock(
+                    id=call.get("id") or f"call_{len(tool_uses)}",
+                    name=fn.get("name", ""),
+                    input=args,
+                )
             )
-        usage = data.get("usage", {})
+        usage = data.get("usage") or {}
         return LLMResponse(
             text=text,
             tool_uses=tool_uses,
-            structured=extract_json(text) if request.response_schema is not None else None,
+            structured=extract_json(text) if structured else None,
             usage=LLMUsage(
                 input_tokens=int(usage.get("prompt_tokens", 0)),
                 output_tokens=int(usage.get("completion_tokens", 0)),
             ),
             model=data.get("model", self.model),
-            stop_reason=choice.get("finish_reason", ""),
+            stop_reason=choice.get("finish_reason", "") or "",
             latency_ms=latency_ms,
         )
 

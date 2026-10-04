@@ -66,6 +66,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
+"app/llm/capabilities.py" = ["C408"]
 "tests/**" = ["S", "PLR", "B", "ASYNC", "RUF"]
 "evals/**" = ["S"]
 

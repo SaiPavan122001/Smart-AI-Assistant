@@ -19,14 +19,21 @@ def _home() -> Path:
     return Path(os.path.expanduser("~"))
 
 
+ProviderName = Literal["openai", "anthropic", "gemini", "openrouter", "openai_compatible", "none"]
+
+
 class LLMSettings(BaseModel):
-    provider: Literal["anthropic", "openai", "none"] = "anthropic"
+    provider: ProviderName = "anthropic"
     model: str = "claude-sonnet-5-5"
     temperature: float = Field(default=0.0, ge=0.0, le=2.0)
     max_tokens: int = Field(default=4096, ge=64, le=64000)
     request_timeout_s: float = 90.0
     base_url: str | None = None  # OpenAI-compatible endpoints (Ollama, vLLM, Azure gateway, ...)
     api_key: SecretStr | None = None
+    # Per-model capability overrides, e.g. {"supports_tools": true, "supports_json_schema": false}
+    capabilities: dict[str, bool] = Field(default_factory=dict)
+    app_name: str = "Smart AI Assistant"  # attribution header for OpenRouter
+    app_url: str | None = None
     # Estimated price per 1M tokens (USD). Used for *estimates* only.
     price_input_per_mtok: float = 3.0
     price_output_per_mtok: float = 15.0
@@ -34,7 +41,7 @@ class LLMSettings(BaseModel):
 
 class VisionSettings(BaseModel):
     enabled: bool = True
-    provider: Literal["anthropic", "openai", "none"] = "anthropic"
+    provider: ProviderName = "anthropic"
     model: str = "claude-sonnet-5-5"
     min_confidence: float = Field(default=0.6, ge=0.0, le=1.0)
     api_key: SecretStr | None = None

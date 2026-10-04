@@ -217,7 +217,9 @@ def test_factory_selects_provider_and_never_requires_keys_in_repr() -> None:
     assert isinstance(build_llm_provider(s), AnthropicProvider)
     assert "sk-ant-secret" not in repr(s) and "sk-ant-secret" not in s.model_dump_json()
     local = Settings(
-        llm=LLMSettings(provider="openai", base_url="http://localhost:11434/v1", model="llama3")
+        llm=LLMSettings(
+            provider="openai_compatible", base_url="http://localhost:11434/v1", model="llama3"
+        )
     )
     assert isinstance(build_llm_provider(local), OpenAIProvider)
 

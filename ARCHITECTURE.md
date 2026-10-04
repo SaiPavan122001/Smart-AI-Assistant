@@ -18,7 +18,7 @@ app/
                   ExecutionEvent, VerificationSpec/Result, TaskResult.   (depends on utils only)
   utils/          ids, structured errors, secret redaction, cancel/pause/kill-switch primitives, text matching, plan-reference templating
   config/         Pydantic settings (env-driven, secrets as SecretStr)
-  llm/            LLMProvider ABC, Anthropic + OpenAI-compatible providers (httpx), gateway (budget, redaction, accounting,
+  llm/            LLMProvider ABC, provider adapters (openai, anthropic, gemini, openrouter, openai_compatible), registry, capability registry (httpx), gateway (budget, redaction, accounting,
                   structured-output repair), scripted test adapter
   security/       PathPolicy, command classifier, URL/SSRF policy, injection scanner + taint guard, entity extraction
   permissions/    PermissionPolicy, PermissionEngine (pure decision function), ApprovalManager

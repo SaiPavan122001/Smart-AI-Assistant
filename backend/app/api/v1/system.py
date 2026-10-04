@@ -24,6 +24,9 @@ async def ready(c: ContainerDep, response: Response) -> Readiness:
     checks: dict[str, Any] = {
         "database": db_ok,
         "llm_configured": c.gateway is not None,
+        "llm_usable": c.gateway is not None and c.llm_problem is None,
+        "llm_problem": c.llm_problem,
+        "warnings": list(c.warnings),
         "browser": c.services.browser is not None,
         "desktop": c.services.desktop is not None,
         "vision": c.services.vision is not None,
@@ -50,6 +53,8 @@ async def effective_settings(c: ContainerDep) -> dict[str, Any]:
             "model": s.llm.model,
             "temperature": s.llm.temperature,
             "configured": c.gateway is not None,
+            "capabilities": c.llm.capabilities.model_dump() if c.llm is not None else None,
+            "problem": c.llm_problem,
         },
         "vision": {
             "enabled": s.vision.enabled,

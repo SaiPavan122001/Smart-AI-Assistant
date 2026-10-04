@@ -18,6 +18,7 @@ from app.llm.base import (
     ToolResultBlock,
     ToolUseBlock,
 )
+from app.llm.capabilities import ModelCapabilities, resolve_capabilities
 from app.llm.http import post_json
 from app.llm.structured import extract_json
 
@@ -60,8 +61,10 @@ class AnthropicProvider(LLMProvider):
         base_url: str | None = None,
         timeout_s: float = 90.0,
         client: httpx.AsyncClient | None = None,
+        capabilities: ModelCapabilities | None = None,
     ) -> None:
         self.model = model
+        self.capabilities = capabilities or resolve_capabilities(model)
         self._api_key = api_key
         self._url = (base_url or "https://api.anthropic.com").rstrip("/") + "/v1/messages"
         self._client = client or httpx.AsyncClient(timeout=timeout_s)

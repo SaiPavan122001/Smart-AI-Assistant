@@ -46,3 +46,13 @@ def validation_feedback(exc: Exception) -> str:
         )
         return f"Your previous output failed schema validation: {problems}. Return corrected JSON only."
     return f"Your previous output was unusable: {exc}. Return valid JSON matching the schema only."
+
+
+def schema_instruction(schema: dict[str, object]) -> str:
+    """Prompt text for models without native schema-constrained output (compatibility mode)."""
+    import json as _json
+
+    return (
+        "Respond with ONE JSON object only (no prose, no code fences) that conforms to this JSON Schema:\n"
+        + _json.dumps(schema, separators=(",", ":"))
+    )
