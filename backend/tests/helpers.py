@@ -161,3 +161,45 @@ def make_harness(env: Env, script: list[Any] | None = None, *, fallback: Any = N
         services=env.services, metrics=env.metrics, gateway=gateway, planner=planner,
     )  # fmt: skip
     return Harness(env=env, llm=llm, runtime=TaskRuntime(deps, env.kill))
+
+
+# ---------------------------------------------------------------------------- approval responder
+import asyncio  # noqa: E402
+from collections.abc import Callable  # noqa: E402
+
+from app.models.approval import ApprovalDecision, ApprovalRequest  # noqa: E402
+
+
+class Responder:
+    """Plays the human: decides every approval request as it appears and records what it saw."""
+
+    def __init__(self, env: Env, decide: Callable[[ApprovalRequest], ApprovalDecision]) -> None:
+        self.env = env
+        self.decide = decide
+        self.seen: list[ApprovalRequest] = []
+        self._task: asyncio.Task[None] | None = None
+
+    async def _loop(self) -> None:
+        while True:
+            for req in list(self.env.approvals.pending()):
+                if req.id in {s.id for s in self.seen}:
+                    continue
+                self.seen.append(req.model_copy(deep=True))
+                await self.env.approvals.resolve(req.id, self.decide(req))
+            await asyncio.sleep(0.01)
+
+    def __enter__(self) -> Responder:
+        self._task = asyncio.get_event_loop().create_task(self._loop())
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        if self._task:
+            self._task.cancel()
+
+
+def approve_all(_req: ApprovalRequest) -> ApprovalDecision:
+    return ApprovalDecision(approved=True)
+
+
+def deny_all(_req: ApprovalRequest) -> ApprovalDecision:
+    return ApprovalDecision(approved=False, note="denied by test")

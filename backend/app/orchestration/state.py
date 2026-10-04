@@ -50,6 +50,9 @@ class RunState:
         self.replans_used = 0
         self.answer: str | None = None
         self.artifacts: dict[str, Any] = {}
+        self.last_verification: list[
+            Any
+        ] = []  # newest final-verification results (for failure reports)
         self._status_before_wait: TaskStatus | None = None
 
     # ------------------------------------------------------------------ scope for templates

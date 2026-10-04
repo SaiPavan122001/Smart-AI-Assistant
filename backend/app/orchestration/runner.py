@@ -166,6 +166,7 @@ class TaskRunner:
         for _round in range(self._settings.limits.max_replans + 1):
             await rs.set_status(TaskStatus.VERIFYING)
             results, ok = await self._verify_final(rs, ctx)
+            rs.last_verification = results
             blocking = self._blocking_failures(rs)
             if ok and not blocking:
                 return results, any(r.method == "deterministic" for r in results) and all(
@@ -429,7 +430,7 @@ class TaskRunner:
         verification: list[VerificationResult], verified: bool, duration_s: float,
     ) -> TaskResult:  # fmt: skip
         task = rs.task
-        rs.handle.meter.usage.approvals = max(rs.handle.meter.usage.approvals, 0)
+        verification = verification or rs.last_verification
         # Never leave dangling approvals or browser/vision state behind.
         self.d.approvals.cancel_task(task.id)
         if self.d.services.browser is not None:

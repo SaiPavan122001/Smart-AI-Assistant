@@ -182,8 +182,15 @@ class StepExecutor:
             if not out.success:
                 code = out.error.code if out.error else ErrorCode.VERIFICATION_FAILED
                 return _Attempt(False, code, out.error.message if out.error else out.summary)
-            summary, artifacts, answer = out.summary, out.artifacts, out.answer
+            summary, artifacts, answer = out.summary, dict(out.artifacts), out.answer
             data = {"iterations": out.iterations, "tool_calls": [r.tool for r in out.results]}
+            # A recovered tool step must look like the step it replaces: expose the output of the last
+            # successful call of the planned tool, so later `{{steps.sN.data.x}}` references still resolve.
+            wanted = [r for r in out.results if r.ok and (not step.tool or r.tool == step.tool)]
+            if wanted:
+                last = wanted[-1]
+                data = {**last.data, **data}
+                artifacts = {**artifacts, **last.artifacts}
         else:
             try:
                 raw_args = resolve(args if args is not None else step.args, rs.scope)

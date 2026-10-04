@@ -59,14 +59,20 @@ def validate_plan(
     for step in plan.steps:
         if step.id in seen:
             problems.append(f"duplicate step id '{step.id}'")
-        refs = referenced_steps(step.args) | referenced_steps([v.params for v in step.verify])
+        arg_refs = referenced_steps(step.args)
+        verify_refs = referenced_steps([v.params for v in step.verify])
         for dep in step.depends_on:
             if dep not in seen:
                 problems.append(f"{step.id}: depends_on '{dep}' is not an earlier step")
-        for ref in refs:
+        for ref in arg_refs:
             if ref not in seen:
                 problems.append(
                     f"{step.id}: references {{{{steps.{ref}...}}}} which is not an earlier step"
+                )
+        for ref in verify_refs:  # a step's own verification may reference its own output
+            if ref not in seen and ref != step.id:
+                problems.append(
+                    f"{step.id}: verification references {{{{steps.{ref}...}}}} which is not an earlier step"
                 )
         if step.kind is StepKind.TOOL:
             tool = registry.get(step.tool or "")

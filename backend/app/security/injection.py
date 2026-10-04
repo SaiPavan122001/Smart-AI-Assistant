@@ -23,6 +23,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from app.models.tool import InjectionFinding
+from app.security.entities import extract_entities, normalize_path_text
 from app.utils.redact import redact_text
 
 _ZERO_WIDTH = dict.fromkeys(
@@ -126,6 +127,9 @@ class ScanResult:
     findings: list[InjectionFinding] = field(default_factory=list)
     hidden_chars: int = 0
     fragments: list[str] = field(default_factory=list)  # normalised text spans that matched
+    entities: set[str] = field(
+        default_factory=set
+    )  # resources named near the injected instructions
 
     @property
     def flagged(self) -> bool:
@@ -161,6 +165,7 @@ def scan(text: str, *, max_chars: int = 200_000) -> ScanResult:
             InjectionFinding(rule=name, severity=severity, excerpt=excerpt[:200])
         )
         result.fragments.append(m.group(0).strip().lower())
+        result.entities |= extract_entities(norm[max(0, m.start() - 80) : m.end() + 300])
     if result.hidden_chars >= 8:
         result.findings.append(
             InjectionFinding(
@@ -196,10 +201,12 @@ def wrap_untrusted(
 class InjectionGuard:
     """Per-task taint tracking (explicit object, owned by the task context)."""
 
-    def __init__(self) -> None:
+    def __init__(self, user_text: str = "") -> None:
         self.tainted = False
         self.sources: list[str] = []
         self._fragments: list[str] = []
+        self._entities: set[str] = set()
+        self._user_text = normalize_path_text(normalize(user_text))
 
     def observe(self, source: str, text: str) -> ScanResult:
         res = scan(text)
@@ -209,16 +216,21 @@ class InjectionGuard:
                 self.sources.append(source)
             self._fragments.extend(f for f in res.fragments if len(f) >= 8)
             self._fragments = self._fragments[-50:]
+            # resources the *user* also named are legitimate targets; the rest came only from the attacker
+            self._entities |= {e for e in res.entities if e not in self._user_text}
         return res
 
     def args_derived_from_injection(self, args: dict[str, Any]) -> str | None:
-        """Return the offending fragment when tool arguments were lifted from flagged text."""
-        if not self._fragments:
+        """Return the offending fragment/resource when tool arguments were lifted from flagged text."""
+        if not self._fragments and not self._entities:
             return None
-        blob = normalize(" ".join(_flatten(args))).lower()
+        blob = normalize_path_text(normalize(" ".join(_flatten(args))))
         for frag in self._fragments:
             if len(frag) >= 8 and frag in blob:
                 return frag
+        for ent in self._entities:
+            if ent in blob:
+                return ent
         return None
 
 
