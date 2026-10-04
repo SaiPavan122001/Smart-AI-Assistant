@@ -30,7 +30,12 @@ os.environ["SAA_DATABASE__URL"] = (
 )
 os.environ["SAA_DATABASE__AUTO_MIGRATE"] = "true"
 
-from app.config.settings import BrowserSettings, FilesystemSettings, LimitSettings, Settings  # noqa: E402
+from app.config.settings import (  # noqa: E402
+    BrowserSettings,
+    FilesystemSettings,
+    LimitSettings,
+    Settings,
+)
 from app.container import build_container  # noqa: E402
 
 S7 = L.SANDBOX / "step7"
@@ -219,7 +224,7 @@ async def run(sid: str) -> None:
     for k in keep:
         if k in out:
             v = out[k]
-            if k == "real_opens" or k == "real_closes":
+            if k in {"real_opens", "real_closes"}:
                 v = {p: n for p, n in v.items() if n}
             print(f"{k} = {str(v)[:420]}".encode("ascii", "replace").decode())
     print("tools =", [(a, b) for a, b in out["tools"]])
