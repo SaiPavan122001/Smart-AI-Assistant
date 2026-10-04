@@ -10,6 +10,7 @@ import contextlib
 import ctypes
 import os
 import subprocess
+import time
 from collections import deque
 from typing import Any
 
@@ -39,6 +40,10 @@ _INTERESTING = {
     "tree", "treeitem", "tablist", "tab", "link", "slider", "grid", "griditem", "window", "toolbar",
 }  # fmt: skip
 _SENSITIVE_HINT = ("password", "passwort", "secret", "pin", "cvv", "card number")
+
+
+def _norm_text(t: str) -> str:
+    return t.replace("\r\n", "\n").replace("\r", "\n").strip()
 
 
 def _rect(r: Any) -> Rect:
@@ -282,6 +287,11 @@ class UIABackend:
             raise DesktopError("failed", f"Could not click element: {type(exc).__name__}") from exc
 
     def type_text(self, ref: str, text: str, *, clear: bool) -> str:
+        """Set text via the UIA value pattern; fall back to paced keyboard input *with read-back*.
+
+        Some apps (e.g. Windows Notepad's RichEdit) silently drop keystrokes typed too fast, so the
+        keyboard path verifies what actually landed and retries slower before reporting success.
+        """
         w = self._wrap(ref)
         if clear:
             try:
@@ -289,17 +299,46 @@ class UIABackend:
                 return "value_pattern"
             except Exception:
                 pass
-        try:
-            from pywinauto.keyboard import send_keys
+        from pywinauto.keyboard import send_keys
 
-            with contextlib.suppress(Exception):
-                w.set_focus()
-            if clear:
-                send_keys("^a{BACKSPACE}", pause=0.01)
-            send_keys(escape_literal(text), with_spaces=True, with_newlines=True, pause=0.005)
-            return "keyboard"
-        except Exception as exc:
-            raise DesktopError("failed", f"Typing failed: {type(exc).__name__}") from exc
+        previous = self._current_value(w) if not clear else ""
+        expected = (previous or "") + text if not clear else text
+        for attempt, pause in enumerate((0.012, 0.04, 0.09), start=1):
+            try:
+                with contextlib.suppress(Exception):
+                    w.set_focus()
+                if clear or attempt > 1:
+                    send_keys("^a{BACKSPACE}", pause=0.01)
+                    if not clear:
+                        send_keys(
+                            escape_literal(previous or ""),
+                            with_spaces=True,
+                            with_newlines=True,
+                            pause=pause,
+                        )
+                send_keys(escape_literal(text), with_spaces=True, with_newlines=True, pause=pause)
+            except Exception as exc:
+                raise DesktopError("failed", f"Typing failed: {type(exc).__name__}") from exc
+            time.sleep(min(1.0, 0.2 + 0.01 * len(text)))  # let the target app drain its input queue
+            actual = self._current_value(w)
+            if actual is None:  # value not readable (custom control): nothing to verify against
+                return "keyboard_unverified"
+            if _norm_text(actual) == _norm_text(expected):
+                return "keyboard" if attempt == 1 else f"keyboard_retry{attempt - 1}"
+        raise DesktopError(
+            "failed",
+            "Typed text did not arrive intact (the application dropped input); nothing was reported as done",
+        )
+
+    @staticmethod
+    def _current_value(w: Any) -> str | None:
+        try:
+            return str(w.iface_value.CurrentValue)
+        except Exception:
+            try:
+                return str(w.window_text())
+            except Exception:
+                return None
 
     def read_element(self, ref: str) -> dict[str, Any]:
         w = self._wrap(ref)

@@ -35,15 +35,11 @@ def _stem(t: str) -> str:
 
 
 def _token_matches(q: str, words: set[str]) -> bool:
+    """Exact word, same stem, or the *haystack* word extends the query word (download -> downloads)."""
     if q in words:
         return True
     qs = _stem(q)
-    return any(
-        _stem(w) == qs
-        or (len(qs) >= 4 and w.startswith(qs))
-        or (len(w) >= 4 and qs.startswith(_stem(w)))
-        for w in words
-    )
+    return any(_stem(w) == qs or (len(qs) >= 4 and w.startswith(qs)) for w in words)
 
 
 def partial_score(query: str, haystack: str) -> float:
