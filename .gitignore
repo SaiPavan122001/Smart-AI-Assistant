@@ -1,0 +1,30 @@
+# python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+.coverage
+htmlcov/
+# env / secrets
+.env
+.env.*
+!.env.example
+# node
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+# data
+*.db
+*.sqlite
+data/
+playwright-report/
+test-results/
+# os / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
