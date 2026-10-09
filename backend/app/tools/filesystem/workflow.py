@@ -17,7 +17,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.models.enums import Capability, RiskLevel
 from app.models.tool import RiskAssessment
@@ -108,6 +108,18 @@ class FsFindInput(BaseModel):
     max_size: int | None = Field(default=None, ge=0, description="bytes")
     max_pdf_pages: int = Field(default=8, ge=1, le=40, description="pages read per PDF")
     max_results: int = Field(default=50, ge=1, le=200)
+
+    @field_validator("name_pattern", "modified_after", "modified_before", mode="before")
+    @classmethod
+    def _blank_is_unset(cls, v: object) -> object:
+        """Models fill optional fields with placeholders: an empty string means "no filter"."""
+        return None if isinstance(v, str) and not v.strip() else v
+
+    @field_validator("min_size", "max_size", mode="before")
+    @classmethod
+    def _zero_is_unset(cls, v: object) -> object:
+        """...and 0 for a size bound. A real "at most 0 bytes" filter would exclude every file."""
+        return None if v in (0, "0", "") else v
 
     @model_validator(mode="after")
     def _terms_not_blank(self) -> FsFindInput:

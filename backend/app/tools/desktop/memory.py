@@ -21,6 +21,7 @@ from app.tools.desktop.models import (
     UIElement,
     WindowInfo,
     WindowSel,
+    exposure_quality,
 )
 
 
@@ -119,7 +120,7 @@ class FakeDesktopBackend:
             ref = f"f{next(self._seq)}"
             self._refs[ref] = el
             out.append(self._describe(ref, el))
-        quality = "empty" if not out else ("poor" if len(out) <= 3 else "good")
+        quality = exposure_quality(out)
         return Snapshot(
             window=self._info(w),
             elements=out,

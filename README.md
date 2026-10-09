@@ -99,6 +99,11 @@ docker compose -f infra/docker/docker-compose.yml up -d --wait
 * **Windows desktop agent (UI Automation)** — window enumeration, structured control tree, find by automation-id/name/role,
   invoke/value/select patterns (background-safe: no mouse movement needed), verified keyboard fallback, vision-gated coordinate
   clicks, terminals/credential managers/security prompts are untouchable.
+* **Complex workflows (NEXT-A)** — the request's explicit requirements (named output files, "three sources with URLs", "do not delete
+  anything") are extracted by code, can not be dropped by a re-plan and are checked against the real final state; ranked file discovery
+  inside PDFs and text (`fs_find`), batch organize / read, grounded summaries, truthful `PARTIAL` results with a per-step and
+  per-requirement report, and progress checkpoints. See [docs/next-a/implementation.md](docs/next-a/implementation.md) and the
+  [validation results](docs/next-a/validation-results.md) for what was and was not validated live.
 * **Filesystem** — allowlisted roots, blocked system/credential locations, traversal/UNC/ADS/device-name/junction defenses,
   extension and size limits, Recycle-Bin deletes.
 * **Controlled terminal** — no shell, ever: commands are tokenized, classified, policy-checked, argument-validated and run with a
@@ -127,8 +132,8 @@ docker compose -f infra/docker/docker-compose.yml up -d --wait
 
 * Single user, single machine, one task at a time; token auth on loopback, no TLS, no per-user accounts.
 * Desktop automation is Windows-only.
-* Validated live with one model on a fixed set of short tasks. Long multi-step workflows, other models and unattended operation
-  are not validated.
+* Validated live with one model. The NEXT-A multi-step workflows are covered by deterministic tests; their live validation is
+  incomplete (see [validation results](docs/next-a/validation-results.md)). Other models and unattended operation are not validated.
 * `verified` proves the plan's success criteria, not that the criteria fully express the request.
 * Prompt-injection detection is heuristic; approved code runs with your privileges.
 * A task does not survive a process restart (it is marked FAILED honestly).

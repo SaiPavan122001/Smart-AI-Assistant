@@ -57,7 +57,16 @@ These are real gaps, listed so you can decide whether the residual risk is accep
    proxy with TLS and additional authentication. There is no rate limiting.
 6. **Data leaves the machine to the LLM provider**: your instruction, tool outputs (file text, page text, window text) and, if the
    vision fallback is used, screenshots. Redaction is pattern-based and cannot recognise arbitrary free-form secrets.
-7. **Audit rows are not tamper-evident** (an administrator with database access can alter them).
+7. **Restrictions in the request are enforced by pattern.** "Do not delete anything" is recognised by `app/planner/goal.py` (delete, overwrite,
+   move, run commands) and enforced by the router for every tool call, planned or adaptive. An unusual phrasing ("make sure nothing is
+   gone") is not recognised; the permission engine and approvals still apply to everything.
+8. **Grounding checks are heuristics.** A source URL counts only if a tool returned it, and a saved summary must share most of its
+   distinctive words with the text that was read. This catches invented sources and unrelated summaries, not a subtly wrong summary.
+9. **VS Code's editor is not controllable.** Through UI Automation VS Code exposes menus, the activity bar, the sidebar and terminal tabs,
+   but not the editor text, and input into its terminal is blocked (see 3). Coding workflows use the filesystem and terminal tools.
+10. **File names are attacker-controllable data.** `fs_find` / `fs_read_many` results are fenced and scanned like any external content; the
+    heuristic detector does not recognise instructions hidden by hyphenating or splitting words in a file name.
+11. **Audit rows are not tamper-evident** (an administrator with database access can alter them).
 8. **UI Automation reads on-screen content.** Password-like fields are masked by heuristics only.
 9. **Only one live model was exercised.** The single-user validation campaigns ran against `openai/gpt-4.1` through OpenRouter. The
    Anthropic, Gemini and plain OpenAI adapters are verified against recorded wire formats only; run a smoke test with your key and

@@ -102,6 +102,10 @@ deferred to the production-hardening phase.
 * Adaptive recovery of a failed deterministic step receives the failed action's own output (`stdout`/`stderr`, 4 000 characters) as a fenced
   `failed_action_output` block — never in the goal text — so a failing test run can be diagnosed from the failing assertion.
 * A tool result with `LIMIT_EXCEEDED` ends the adaptive step at once; the model is not asked for another way around a spent budget.
+* `desktop_read(mode=tree)` looks once more when the first tree is sparse, and the window frame no longer counts towards "good" exposure
+  (`exposure_quality`): Chromium / Electron apps such as VS Code build their accessibility tree on the first request. Found with a real probe
+  of VS Code (4 controls, then 111).
+* `TaskMetrics` gains `outcome`, `replan_count`, `requirements_total/met`, `steps_completed/failed`.
 * Planner prompt: rule 13 (a–f) describes the workflow shapes above; the adaptive prompt requires summaries to use only text returned by tools.
 
 ## 9. Interface
@@ -118,16 +122,17 @@ New: `app/models/goal.py`, `app/models/report.py`, `app/planner/goal.py`, `app/v
 `tests/e2e/test_research_and_coding_workflows.py`.
 Changed: `app/tools/router.py`, `app/tools/context.py`, `app/planner/planner.py`, `app/planner/prompts.py`, `app/orchestration/runner.py`,
 `app/agent/{answer,executor,adaptive,state}.py`, `app/models/{enums,plan,task}.py`, `app/utils/errors.py`, `app/registry.py`,
-`app/api/v1/tasks.py`, `frontend/src/{types/api.ts,features/tasks/*}`, generated docs.
+`app/api/v1/tasks.py`, `app/tools/desktop/{models,uia,memory,tools}.py`, `validation/{campaign,tool_probe}.py`,
+`frontend/src/{types/api.ts,features/tasks/*}`, generated docs.
 
 ## 11. Deterministic tests added
 
 | File | Tests | What they pin down |
 |---|---|---|
 | `tests/unit/test_goal.py` | 22 | extraction (named files, input vs output, counts, URLs, domains, prohibitions and their reach), router enforcement, requirement evaluation (empty file, stale file, invented / insufficient / off-site URLs, ungrounded summary, path probing outside roots) |
-| `tests/unit/test_fs_workflow_tools.py` | 11 | strong / ambiguous classification, duplicates, identical copies, context / exclude terms, metadata filters, root + credential policy, atomic validation, idempotent re-run, rename / copy, bounded multi-read, observed ledger |
+| `tests/unit/test_fs_workflow_tools.py` | 14 | strong / ambiguous classification, duplicates, identical copies, context / exclude terms, metadata filters, root + credential policy, atomic validation, idempotent re-run, rename / copy, bounded multi-read, observed ledger, placeholder filters (regression from the live run), injected PDF text and file names |
 | `tests/e2e/test_complex_workflows.py` | 15 | Workflow A end to end (with a real PDF workspace); Workflow C; missing save caught and re-planned without repeating the move; chat-only summary never a success; PARTIAL; forbidden tool at plan time and at run time; checkpoints and secrets; STOP mid-workflow; action budget; bad reference repaired; pause between steps |
-| `tests/e2e/test_research_and_coding_workflows.py` | 8 | Workflow B (three grounded sources; invented URL; too few sources; provider unavailable); Workflow D (real `unittest` run behind approval, diagnosis from real output, unfixable failure, denial is final, workspace roots) |
+| `tests/e2e/test_research_and_coding_workflows.py` | 10 | Workflow B (three grounded sources; invented URL; too few sources; provider unavailable); Workflow D (real `unittest` run behind approval, diagnosis from real output, unfixable failure, denial is final, workspace roots); a requested URL must appear in the answer |
 
 Mutation checks made while writing them: disabling the goal evaluation fails 9 workflow tests; disabling router enforcement fails 3.
 

@@ -614,6 +614,9 @@ class TaskRunner:
             pause_count=usage.pause_count, resume_count=usage.resume_count, vision_calls=usage.vision_calls,
             task_duration=round(duration_s, 2), final_status=status.value, verified=verified,
             answer_status=answer.status.value,
+            outcome=outcome_of(status, error, report).value, replan_count=usage.replans,
+            requirements_total=len(report.requirements), requirements_met=len(report.met),
+            steps_completed=len(report.completed), steps_failed=len(report.failed),
         )  # fmt: skip
         result = TaskResult(
             status=status, summary=summary, verified=verified, verification=verification,

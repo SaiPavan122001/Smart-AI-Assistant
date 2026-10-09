@@ -1,0 +1,245 @@
+{
+  "id": "NA1",
+  "title": "Workflow A: find Java PDFs, move, summarise, save",
+  "instruction": "Find the Java-related PDFs in this test workspace (%USERPROFILE%\\SmartAIAssistant\\validation\\next_a\\a), move them into a Java folder inside it, summarize their contents, and save the summary as Java-summary.md in the same workspace.",
+  "status": "FAILED",
+  "expected_status": "COMPLETED",
+  "status_ok": false,
+  "verified": false,
+  "outcome": "FAILED",
+  "verification_status": "NOT_RUN",
+  "answer_status": "WITHHELD",
+  "summary": "Failed: 3/4 steps succeeded.\nReason: LLM HTTP 403: {\"error\":{\"message\":\"Key limit exceeded (total limit). Manage it using https://openrouter.ai/<key-settings-url-redacted>\",\"code\":403}}\n- Summarize the contents of the Java PDFs and save as Java-summary.md: LLM HTTP 403: {\"error\":{\"message\":\"Key limit exceeded (total limit). Manage it using https://openrouter.ai/<key-settings-url-redacted>\nDone: Find Java-related PDFs in the specified workspace; Move strong Java-related PDFs to a new Java folder; Read the mov",
+  "answer": "The task could not be completed. Reason: LLM HTTP 403: {\"error\":{\"message\":\"Key limit exceeded (total limit). Manage it using https://openrouter.ai/<key-settings-url-redacted>\",\"code\":403}}\nDone: Find Java-related PDFs in the specified workspace; Move strong Java-related PDFs to a new Java folder; Read the moved Java-related PDFs. Failed: Summarize the contents of the Java PDFs and save as Java-summary.md (LLM HTTP 403: {\"error\":{\"message\":\"Key limit exceeded (total limit). Manage it using https://openrou). Requirements: \u2713 save the output as Java-summary.md; \u2713 the saved summary must be based on the content that was actually read. Completed actions were not undone.",
+  "calls_by_purpose": {
+    "planner": 1,
+    "replanner": 1,
+    "repair": 0,
+    "step": 10,
+    "judge": 0,
+    "answer_generation": 0
+  },
+  "replans": 1,
+  "verification": {
+    "attempts": 1,
+    "polls": 1,
+    "duration_s": 0.02,
+    "success_time_s": 0.02,
+    "failures": 0
+  },
+  "pause_resume_events": [],
+  "plan_invalid_details": null,
+  "error": "LLM HTTP 403: {\"error\":{\"message\":\"Key limit exceeded (total limit). Manage it using https://openrouter.ai/<key-settings-url-redacted>\",\"code\":403}}",
+  "llm_calls": 12,
+  "llm_budget": 16,
+  "llm_ok": true,
+  "vision_calls": 0,
+  "tool_calls": 9,
+  "tools": [
+    [
+      "fs_find",
+      "ok"
+    ],
+    [
+      "fs_organize",
+      "invalid_input"
+    ],
+    [
+      "fs_list",
+      "ok"
+    ],
+    [
+      "fs_find",
+      "ok"
+    ],
+    [
+      "fs_create",
+      "ok"
+    ],
+    [
+      "fs_organize",
+      "ok"
+    ],
+    [
+      "fs_list",
+      "ok"
+    ],
+    [
+      "fs_read_many",
+      "ok"
+    ],
+    [
+      "fs_create",
+      "ok"
+    ]
+  ],
+  "duration_s": 36.6,
+  "recoveries": 3,
+  "recovery_events": [
+    "adaptive_fallback",
+    "retry",
+    "retry"
+  ],
+  "input_tokens": 55948,
+  "output_tokens": 1877,
+  "llm_latency_ms": 26321,
+  "cost_usd": 0.1269,
+  "approvals": [],
+  "injection_events": 0,
+  "event_types": [
+    "action_completed",
+    "action_failed",
+    "action_started",
+    "checkpoint_saved",
+    "observation_received",
+    "plan_created",
+    "planning_started",
+    "recovery_completed",
+    "recovery_started",
+    "status_changed",
+    "step_completed",
+    "step_failed",
+    "step_started",
+    "task_created",
+    "task_failed",
+    "tool_selected",
+    "usage_updated",
+    "verification_completed",
+    "verification_started"
+  ],
+  "plan_steps": [
+    [
+      "s1",
+      "tool",
+      "fs_find",
+      "SUCCEEDED",
+      "0 strong and 0 ambiguous match(es) for java under %USERPROFILE%\\SmartAIAssistant\\validation\\next_a\\a"
+    ],
+    [
+      "s2",
+      "tool",
+      "fs_organize",
+      "SUCCEEDED",
+      "I created a new 'Java' folder and moved the strong Java-related PDFs into it. Two files ('java-basics.pdf' and 'Intro_to_OOP.pdf') are now in the new folder. On"
+    ],
+    [
+      "s3",
+      "tool",
+      "fs_read_many",
+      "SUCCEEDED",
+      "Read 2 of 2 file(s)"
+    ],
+    [
+      "s4",
+      "adaptive",
+      null,
+      "FAILED",
+      "Failed: LLM HTTP 403: {\"error\":{\"message\":\"Key limit exceeded (total limit). Manage it using https://openrouter.ai/<key-settings-url-redacted>"
+    ]
+  ],
+  "world_ok": true,
+  "java_folder": [
+    "Intro_to_OOP.pdf",
+    "java-basics.pdf"
+  ],
+  "identical_twin_left_in_place": true,
+  "unrelated_files_changed": [],
+  "summary_path": "%USERPROFILE%\\SmartAIAssistant\\validation\\next_a\\a\\Java-summary.md",
+  "summary_mentions_ambiguous_content": [],
+  "summary_grounded_keywords": true,
+  "summary_chars": 784,
+  "ambiguous_left_in_place": true,
+  "goal_requirements": [
+    {
+      "kind": "artifact",
+      "status": "met",
+      "evidence": "%USERPROFILE%\\SmartAIAssistant\\validation\\next_a\\a\\Java-summary.md (784 bytes)"
+    },
+    {
+      "kind": "grounded_summary",
+      "status": "met",
+      "evidence": "91% of Java-summary.md's distinctive words occur in what was read"
+    }
+  ],
+  "report_completed": [
+    "s1",
+    "s2",
+    "s3"
+  ],
+  "report_failed": [
+    "s4"
+  ],
+  "report_not_run": [],
+  "report_interrupted": [],
+  "side_effects": [
+    "fs_create",
+    "fs_organize",
+    "fs_create"
+  ],
+  "task_id": "task_3b4f62cb73394c20",
+  "model": "openrouter/openai/gpt-4.1",
+  "launch_tool_calls": 0,
+  "replayed_calls": 0,
+  "loop_guard_triggered": false,
+  "identical_side_effect_repeats": {
+    "fs_organize|{\"action\": \"move\", \"dest_dir\": \"%USERPROFILE%\\\\SmartAIAssistant\\\\validation\\\\next_a\\\\a\\": 2
+  },
+  "approvals_db": [],
+  "permission_decisions": [
+    {
+      "tool": "fs_find",
+      "via": "policy",
+      "action": "allow"
+    },
+    {
+      "tool": "fs_list",
+      "via": "policy",
+      "action": "allow"
+    },
+    {
+      "tool": "fs_find",
+      "via": "policy",
+      "action": "allow"
+    },
+    {
+      "tool": "fs_create",
+      "via": "policy",
+      "action": "allow"
+    },
+    {
+      "tool": "fs_organize",
+      "via": "policy",
+      "action": "allow"
+    },
+    {
+      "tool": "fs_list",
+      "via": "policy",
+      "action": "allow"
+    },
+    {
+      "tool": "fs_read_many",
+      "via": "policy",
+      "action": "allow"
+    },
+    {
+      "tool": "fs_create",
+      "via": "policy",
+      "action": "allow"
+    }
+  ],
+  "window_events": [],
+  "real_opens": {
+    "chrome.exe": 0,
+    "calculatorapp.exe": 0,
+    "notepad.exe": 0,
+    "calc.exe": 0
+  },
+  "real_closes": {
+    "chrome.exe": 0,
+    "calculatorapp.exe": 0,
+    "notepad.exe": 0,
+    "calc.exe": 0
+  },
+  "vision_calls_db": 0,
+  "wall_s": 38.9
+}

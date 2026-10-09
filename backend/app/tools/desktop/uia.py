@@ -23,6 +23,7 @@ from app.tools.desktop.models import (
     UIElement,
     WindowInfo,
     WindowSel,
+    exposure_quality,
 )
 
 _ROLE_MAP = {
@@ -209,8 +210,9 @@ class UIABackend:
                         queue.clear()
                         break
                 queue.append((ch, depth + 1))
-        quality = "empty" if not elements else ("poor" if len(elements) <= 3 else "good")
-        return Snapshot(window=info, elements=elements, truncated=truncated, quality=quality)
+        return Snapshot(
+            window=info, elements=elements, truncated=truncated, quality=exposure_quality(elements)
+        )
 
     def _describe(
         self, node: Any, depth: int, hwnd: int, ref: str | None = None

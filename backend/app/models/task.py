@@ -67,6 +67,14 @@ class TaskMetrics(BaseModel):
     final_status: str = ""
     verified: bool = False
     answer_status: str = ""
+    outcome: str = ""  # COMPLETED | PARTIAL | FAILED | DENIED | ...
+    replan_count: int = 0
+    requirements_total: int = (
+        0  # the user's explicit requirements (named files, source counts, ...)
+    )
+    requirements_met: int = 0
+    steps_completed: int = 0
+    steps_failed: int = 0
 
 
 class TaskResult(BaseModel):

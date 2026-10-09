@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from pydantic import BaseModel, Field, model_validator
@@ -17,6 +18,7 @@ from app.tools.desktop.service import DesktopService
 from app.tools.schema import OutputModel
 from app.utils.errors import AgentError, ErrorCode, PolicyViolation
 
+WARMUP_S = 1.2  # Chromium/Electron builds its accessibility tree on the first UI Automation request
 _RETRY_STALE = RetryPolicy(
     max_attempts=2, backoff_s=0.3, retry_on=[ErrorCode.STALE_REFERENCE.value]
 )
@@ -372,6 +374,11 @@ class DesktopRead(Tool[ReadInput]):
         svc = _svc(ctx)
         if args.mode == "tree":
             snap = await svc.inspect(args.sel(), max_elements=args.max_elements)
+            if snap.quality != "good":
+                # Chromium / Electron apps (VS Code, Teams, ...) build their accessibility tree on the first
+                # request: look once more before reporting the app as poorly instrumented.
+                await asyncio.sleep(WARMUP_S)
+                snap = await svc.inspect(args.sel(), max_elements=args.max_elements, fresh=True)
             els = [e for e in snap.elements if not args.role_filter or e.role in args.role_filter]
             lines = [("  " * min(e.depth - 1, 4)) + e.brief() for e in els[: args.max_elements]]
             return ToolOutput(

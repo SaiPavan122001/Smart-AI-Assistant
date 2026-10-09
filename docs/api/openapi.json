@@ -1656,6 +1656,11 @@
             ],
             "title": "Model"
           },
+          "outcome": {
+            "default": "",
+            "title": "Outcome",
+            "type": "string"
+          },
           "pause_count": {
             "default": 0,
             "title": "Pause Count",
@@ -1687,14 +1692,39 @@
             "title": "Repair Calls",
             "type": "integer"
           },
+          "replan_count": {
+            "default": 0,
+            "title": "Replan Count",
+            "type": "integer"
+          },
           "replanner_calls": {
             "default": 0,
             "title": "Replanner Calls",
             "type": "integer"
           },
+          "requirements_met": {
+            "default": 0,
+            "title": "Requirements Met",
+            "type": "integer"
+          },
+          "requirements_total": {
+            "default": 0,
+            "title": "Requirements Total",
+            "type": "integer"
+          },
           "resume_count": {
             "default": 0,
             "title": "Resume Count",
+            "type": "integer"
+          },
+          "steps_completed": {
+            "default": 0,
+            "title": "Steps Completed",
+            "type": "integer"
+          },
+          "steps_failed": {
+            "default": 0,
+            "title": "Steps Failed",
             "type": "integer"
           },
           "task_duration": {
