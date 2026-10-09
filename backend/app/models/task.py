@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from app.models.enums import AnswerStatus, TaskOutcome, TaskStatus, VerificationStatus
 from app.models.plan import Plan
+from app.models.report import CompletionReport
 from app.models.verification import VerificationResult
 from app.utils.errors import ErrorInfo
 from app.utils.ids import new_id, utcnow
@@ -83,6 +84,9 @@ class TaskResult(BaseModel):
     verification_status: VerificationStatus = VerificationStatus.NOT_RUN
     answer_status: AnswerStatus = AnswerStatus.NOT_REQUESTED
     answer: str | None = None
+    report: CompletionReport | None = (
+        None  # steps done / failed / not run, requirements met / unmet
+    )
     duration_s: float = 0.0
     usage: UsageStats = Field(default_factory=UsageStats)
     metrics: TaskMetrics | None = None

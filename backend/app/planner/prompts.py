@@ -12,6 +12,7 @@ import shutil
 from datetime import datetime
 from typing import Any
 
+from app.models.goal import GoalSpec
 from app.models.plan import AdaptiveOutput
 from app.tools.context import ToolServices
 from app.tools.registry import ToolRegistry
@@ -84,6 +85,30 @@ search provider could answer: do not repeat the search. To check a page TITLE us
 site/documentation, pass `official_domains` to web_search (the publisher's domain, e.g. ["spring.io"]) and report \
 "{{steps.<id>.data.best.title}}", "{{steps.<id>.data.best.url}}" and "{{steps.<id>.data.source_note}}". The \
 source_note says whether the domain check passed; the word "official" must not appear in answer_template.
+
+13. Multi-step workflows (each is a chain of deterministic steps; use an adaptive step only where judgement \
+or writing is needed):
+ a. FILES ABOUT A TOPIC ("find the Java PDFs ..."): `fs_find` (terms + REQUIRED context_terms = words a genuine \
+document about the topic also contains, e.g. java -> jvm, class, compiler, bytecode, spring; exclude_terms for \
+other meanings) -> `fs_organize` with `sources: "{{steps.sN.data.strong_paths}}"`. NEVER move or delete \
+`ambiguous_paths`; mention them in the answer ("{{steps.sN.data.ambiguous_paths.length}} possible matches were \
+left untouched"). Duplicates are reported in `duplicate_names` / `identical_groups`; nothing is overwritten.
+ b. SUMMARISING DOCUMENTS: a deterministic `fs_read_many` step (paths "{{steps.sN.data.strong_paths}}" or a \
+fixed list), then ONE adaptive step with `depends_on` that step, `allowed_tools: ["fs_create"]`, a goal that \
+names the exact output path and says to base the summary ONLY on the documents' text (it sees that step's \
+output), mention each document by file name, and write the file with fs_create. Never answer from memory.
+ c. SAVED OUTPUT: every file the user asked for needs a `file_exists` (min_bytes 1) success criterion on its \
+exact path, and the answer_template must say where it was saved ("{{steps.sN.artifacts.path}}").
+ d. WEB RESEARCH with a requested number of sources: `web_search` (max_results >= the number requested), then \
+read the pages you need with browser_open/browser_read inside ONE adaptive step. Titles and URLs must come from \
+tool output (never typed from memory); saved files may only contain URLs that tools returned. If fewer sources \
+were found than requested, say so; do not pad. Official sources: rule 12.
+ e. CODING PROJECTS in the workspace: create files with fs_create, run tests with `terminal_execute_safe` \
+(e.g. "python -m pytest -q" with cwd set to the project), and put diagnosing/fixing failures in ONE adaptive step \
+(allowed_tools fs_read, fs_create with overwrite, terminal_execute_safe). End with a deterministic test run whose \
+exit_code you check with value_check; report the real test output.
+ f. The <explicit_goal> block (when present) lists requirements checked by code at the end and restrictions \
+that are enforced when tools run: plan every requirement, and never plan a forbidden tool.
 
 ## Verification kinds (for `verify` and `success_criteria`; params in braces, * = required)
 {verify_catalog}
@@ -201,12 +226,18 @@ def build_planner_system() -> str:
     )
 
 
-def build_planner_user(instruction: str, registry: ToolRegistry, services: ToolServices) -> str:
+def build_planner_user(
+    instruction: str, registry: ToolRegistry, services: ToolServices, goal: GoalSpec | None = None
+) -> str:
+    from app.planner.goal import goal_prompt_block
+
+    block = goal_prompt_block(goal) if goal is not None else ""
     return (
         f"<environment>\n{describe_environment(services)}\n</environment>\n\n"
         f"<available_tools>\n{tool_catalog(registry)}\n</available_tools>\n\n"
         f"<user_request>\n{instruction}\n</user_request>\n\n"
-        "Produce the plan."
+        + (block + "\n\n" if block else "")
+        + "Produce the plan."
     )
 
 
@@ -217,6 +248,9 @@ ADAPTIVE_SYSTEM = (
     + """
 ## Rules
 - Pursue only the step goal. Do not add unrelated actions.
+- A summary or comparison must be written ONLY from text the tools returned in this task (earlier step \
+outputs, pages you read). Do not use outside knowledge, do not invent titles, URLs, numbers or quotations. If \
+the material is missing or unreadable, say so in finish_step (success=false) instead of filling the gap.
 - Prefer structured tools (find/read/list) over screenshots. Use vision only if structure is unavailable.
 - Use the cheapest tool that answers the question; read narrowly (targeted find, not whole pages).
 - If a tool reports SEARCH_AUTOMATION_BLOCKED (bot check / CAPTCHA), do not retry that site or try to solve it: use `web_search` or finish_step with success=false and say so. If web_search reports SEARCH_UNAVAILABLE, do not repeat it.

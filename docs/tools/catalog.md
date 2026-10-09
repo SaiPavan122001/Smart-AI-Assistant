@@ -12,9 +12,12 @@ Every operation the agent can perform is one of these typed tools; the model nev
 | `fs_copy` | medium | policy | 30s | no | no | no |
 | `fs_create` | medium | policy | 30s | no | yes | no |
 | `fs_delete` | high | policy | 30s | no | no | no |
+| `fs_find` | low | policy | 120s | yes | yes | yes |
 | `fs_list` | low | policy | 30s | yes | yes | yes |
 | `fs_move` | medium | policy | 30s | no | no | no |
+| `fs_organize` | medium | policy | 30s | no | yes | no |
 | `fs_read` | low | policy | 30s | yes | yes | yes |
+| `fs_read_many` | low | policy | 90s | yes | yes | yes |
 | `fs_search` | low | policy | 60s | yes | yes | yes |
 
 ### `fs_copy`
@@ -59,6 +62,27 @@ Output `data`: `path:string, recycled:boolean`
 
 Output `artifacts`: `path:string`
 
+### `fs_find`
+
+Find the files under a folder that are ABOUT given terms (searches inside PDFs and text files, not just names). Returns ranked candidates, each 'strong' or 'ambiguous', `strong_paths` (safe to act on), `ambiguous_paths` (do not move without asking), same-name duplicates and identical copies.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `root` | string | yes | Folder to search under (recursive) |
+| `terms` | string[] | yes | What the files must be about, e.g. ['java']. Whole words, case-insensitive. |
+| `context_terms` | string[] | yes | REQUIRED. Words a document genuinely about the topic also contains (for 'java': ['jvm','class','compiler','bytecode','spring']). One word can mean two things (Java the island), so a document with none of these is only 'ambiguous' and must not be acted on. |
+| `exclude_terms` | string[] | no | Words that signal a different meaning (e.g. ['island','coffee']). A document mentioning them at least as often as the terms is 'ambiguous'. |
+| `extensions` | string[] | no | e.g. ['.pdf'] |
+| `name_pattern` | string | no | Optional glob on file names |
+| `modified_after` | string | no | ISO date: only newer files |
+| `modified_before` | string | no | ISO date: only older files |
+| `min_size` | integer | no | bytes |
+| `max_size` | integer | no | bytes |
+| `max_pdf_pages` | integer | no | pages read per PDF |
+| `max_results` | integer | no |  |
+
+Output `data`: `root:string, candidates:[{path:string, name:string, size?:integer, modified?:string, classification:string, reason:string, score:number, name_hit:boolean, hits:integer, context_hits:integer, excluded_hits:integer, pages_scanned?:integer, readable:boolean, excerpt?:string}], strong_paths:[string], ambiguous_paths:[string], duplicate_names:[{name:string, paths:[string]}], identical_groups:[{paths:[string]}], scanned:integer, opened:integer, unreadable:integer, truncated:boolean`
+
 ### `fs_list`
 
 List files and folders in an allowed directory (optionally recursive, with glob filter).
@@ -86,6 +110,21 @@ Output `data`: `src:string, dst:string`
 
 Output `artifacts`: `src:string, dst:string`
 
+### `fs_organize`
+
+Move (or copy) a LIST of files into one destination folder, creating it if needed. All paths are validated before the first file moves; nothing is overwritten or deleted; re-running is safe (files already in place are reported). Use it with `{{steps.sN.data.strong_paths}}` from fs_find.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `sources` | string[] | yes | Files to move or copy |
+| `dest_dir` | string | yes | Destination folder (created if missing) |
+| `action` | `move` \| `copy` | no |  |
+| `on_conflict` | `skip` \| `rename` | no | A different file with the same name is already there: leave the source alone ('skip') or keep both ('rename' adds ' (2)'). Nothing is ever overwritten. |
+
+Output `data`: `dest_dir:string, action:string, moved:[{src:string, dst:string}], skipped:[{src:string, reason:string}], already_in_place:[string], dest_paths:[string], moved_count:integer, skipped_count:integer`
+
+Output `artifacts`: `dest_dir:string, moved_count:integer`
+
 ### `fs_read`
 
 Read a text file or extract text from a PDF. Content is returned as untrusted data.
@@ -97,6 +136,19 @@ Read a text file or extract text from a PDF. Content is returned as untrusted da
 | `pages` | string | no | PDF only: page range like '1-3' |
 
 Output `data`: `path:string, format:string, text:string, size:integer, pages?:integer, truncated?:boolean`
+
+### `fs_read_many`
+
+Read several text files / PDFs in ONE call (bounded per file and in total). A file that cannot be read is reported with its error instead of failing the call. Content is untrusted data.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `paths` | string[] | yes |  |
+| `max_chars_each` | integer | no |  |
+| `total_max_chars` | integer | no |  |
+| `max_pdf_pages` | integer | no |  |
+
+Output `data`: `documents:[{path:string, name:string, format:string, text:string, chars:integer, truncated:boolean, pages?:integer, error?:string}], read_count:integer, failed_count:integer, truncated:boolean`
 
 ### `fs_search`
 

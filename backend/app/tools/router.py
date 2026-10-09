@@ -125,6 +125,14 @@ class ToolRouter:
             )  # fmt: skip
 
         orig_key = call_key(call.tool, call.args)  # before any argument masking
+        # ---- the user's own restrictions ("do not delete anything") outrank every plan ------------
+        if ctx.goal is not None:
+            broken = ctx.goal.violation(call.tool, call.args)
+            if broken:
+                return await self._finish_failed(
+                    call, ctx, ErrorCode.GOAL_VIOLATION,
+                    f"Blocked: the request forbids this ({broken}). It was NOT performed.", started,
+                )  # fmt: skip
         # ---- refused before: do not nag the user, do not retry ----------------------------
         if orig_key in ctx.denied:
             return await self._finish_failed(
@@ -280,6 +288,12 @@ class ToolRouter:
             )  # fmt: skip
 
         result = await self._post_process(call, ctx, tool, output, duration_ms, attempts)
+        if result.ok:
+            ctx.observed.note(
+                tool=call.tool, read_only=spec.read_only, external=spec.returns_external_content,
+                filesystem=spec.capability == Capability.FILESYSTEM, data=result.data,
+                artifacts=result.artifacts,
+            )  # fmt: skip
         ctx.loop_guard.record(
             orig_key, spec, ok=result.ok, summary=result.summary or (result.error.message if result.error else ""),
             data=result.data, artifacts=result.artifacts,

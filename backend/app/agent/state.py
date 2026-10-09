@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from dataclasses import dataclass, field
 from typing import Any
 
 from app.models.enums import EventType, TaskStatus
 from app.models.events import Correlation
+from app.models.goal import GoalSpec, RequirementResult
 from app.models.plan import Plan
 from app.models.task import Task
 from app.observability.usage import UsageMeter
@@ -53,7 +55,12 @@ class RunState:
         self.handle = handle
         self._bus = bus
         self._repo = repo
+        self.started_monotonic = time.monotonic()
         self.plan: Plan | None = None
+        self.goal: GoalSpec | None = None  # extracted from the request by code, fixed for the task
+        self.requirement_results: list[
+            RequirementResult
+        ] = []  # latest evaluation against real state
         self.step_data: dict[str, dict[str, Any]] = {}
         self.history: list[RecoveryAttempt] = []
         self.replans_used = 0

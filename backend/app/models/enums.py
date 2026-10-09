@@ -78,6 +78,7 @@ class TaskOutcome(StrEnum):
     DENIED = "DENIED"
     LOOP_DETECTED = "LOOP_DETECTED"
     PLAN_INVALID = "PLAN_INVALID"
+    PARTIAL = "PARTIAL"  # failed, but some requested work was completed and is still in place
 
 
 class StepStatus(StrEnum):
@@ -164,3 +165,6 @@ class EventType(StrEnum):
     TASK_TIMED_OUT = "task_timed_out"
     LIMIT_REACHED = "limit_reached"
     KILL_SWITCH = "kill_switch"
+    CHECKPOINT_SAVED = (
+        "checkpoint_saved"  # progress snapshot at a step boundary (not a resume point)
+    )

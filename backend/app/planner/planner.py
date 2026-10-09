@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field, ValidationError
 from app.llm.base import LLMRequest, Message
 from app.llm.gateway import LLMGateway
 from app.models.enums import StepKind, StepStatus
+from app.models.goal import GoalSpec
 from app.models.plan import Plan, PlanStep
 from app.models.verification import VerificationSpec
 from app.observability.logging import get_logger
@@ -69,18 +70,18 @@ class PlanDraft(BaseModel):
 
 def validate_plan(
     plan: Plan, registry: ToolRegistry, *, known_prior: Any = None,
-    prior_criteria: list[VerificationSpec] | None = None,
+    prior_criteria: list[VerificationSpec] | None = None, goal: GoalSpec | None = None,
 ) -> list[str]:  # fmt: skip
     """Return a list of problems (empty = valid). Pure and deterministic."""
     found = validate_plan_detailed(
-        plan, registry, known_prior=known_prior, prior_criteria=prior_criteria
+        plan, registry, known_prior=known_prior, prior_criteria=prior_criteria, goal=goal
     )
     return [str(p) for p in found]
 
 
 def validate_plan_detailed(
     plan: Plan, registry: ToolRegistry, *, known_prior: Any = None,
-    prior_criteria: list[VerificationSpec] | None = None,
+    prior_criteria: list[VerificationSpec] | None = None, goal: GoalSpec | None = None,
 ) -> list[PlanProblem]:  # fmt: skip
     """Structured validation. ``known_prior`` = steps of an earlier plan version (re-planning):
     their ids are taken and the outputs of the ones that SUCCEEDED may be referenced."""
@@ -94,6 +95,8 @@ def validate_plan_detailed(
                 f"plan has {len(plan.steps)} steps; maximum is {MAX_STEPS}",
             )
         )
+    if goal is not None:
+        problems += _goal_problems(plan, goal)
     prior = _prior_steps(known_prior)
     # Only prior steps that SUCCEEDED have output. Pending ones are superseded by this plan.
     _UNAVAILABLE.set({sid for sid, st in prior.items() if st.status is not StepStatus.SUCCEEDED})
@@ -146,6 +149,26 @@ def validate_plan_detailed(
     )
     problems += _validate_answer_template(plan.answer_template, steps, registry, seen)
     return problems
+
+
+def _goal_problems(plan: Plan, goal: GoalSpec) -> list[PlanProblem]:
+    """The plan must respect the user's explicit restrictions (the router enforces them again at run time)."""
+    out: list[PlanProblem] = []
+    for step in plan.steps:
+        names = (
+            [step.tool] if step.kind is StepKind.TOOL and step.tool else list(step.allowed_tools)
+        )
+        for name in names:
+            broken = goal.violation(name, step.args if step.kind is StepKind.TOOL else {})
+            if broken:
+                out.append(
+                    PlanProblem(
+                        "forbidden_by_request",
+                        step.id,
+                        f"{name} is forbidden by the request ({broken}); plan the work without it",
+                    )  # fmt: skip
+                )
+    return out
 
 
 def merge_criteria(
@@ -385,10 +408,13 @@ class Planner:
         self._temperature = services.settings.llm.temperature
 
     async def create_plan(
-        self, task_id: str, instruction: str, *, meter: UsageMeter, token: CancelToken
-    ) -> PlanOutcome:
-        user = build_planner_user(instruction, self._registry, self._services)
-        return await self._plan(task_id, user, meter=meter, token=token, purpose="plan", version=1)
+        self, task_id: str, instruction: str, *, meter: UsageMeter, token: CancelToken,
+        goal: GoalSpec | None = None,
+    ) -> PlanOutcome:  # fmt: skip
+        user = build_planner_user(instruction, self._registry, self._services, goal)
+        return await self._plan(
+            task_id, user, meter=meter, token=token, purpose="plan", version=1, goal=goal
+        )
 
     async def replan(
         self, task_id: str, instruction: str, plan: Plan, *, failure: str, state_summary: str,
@@ -400,8 +426,9 @@ class Planner:
             for s in plan.steps
             if s.status is StepStatus.FAILED and (s.output or {}).get("action_performed")
         ]
+        goal = plan.goal
         user = (
-            build_planner_user(instruction, self._registry, self._services)
+            build_planner_user(instruction, self._registry, self._services, goal)
             + "\n\n<replan_context>\n"
             "A previous plan was partially executed and hit a problem. Produce a plan for ONLY the remaining work. "
             "Do NOT repeat completed steps; you may reference the outputs of COMPLETED steps as "
@@ -421,13 +448,13 @@ class Planner:
         )
         return await self._plan(
             task_id, user, meter=meter, token=token, purpose="replan", version=plan.version + 1,
-            prior={s.id: s for s in plan.steps}, prior_criteria=plan.success_criteria,
+            prior={s.id: s for s in plan.steps}, prior_criteria=plan.success_criteria, goal=goal,
         )  # fmt: skip
 
     async def _plan(
         self, task_id: str, user: str, *, meter: UsageMeter, token: CancelToken, purpose: str, version: int,
         prior: dict[str, PlanStep] | None = None,
-        prior_criteria: list[VerificationSpec] | None = None,
+        prior_criteria: list[VerificationSpec] | None = None, goal: GoalSpec | None = None,
     ) -> PlanOutcome:  # fmt: skip
         """LLM plan -> schema validation -> structured errors -> ONE repair -> validate again.
 
@@ -454,7 +481,11 @@ class Planner:
             try:
                 plan = draft_to_plan(draft, task_id, version=version)
                 problems = validate_plan_detailed(
-                    plan, self._registry, known_prior=prior, prior_criteria=prior_criteria
+                    plan,
+                    self._registry,
+                    known_prior=prior,
+                    prior_criteria=prior_criteria,
+                    goal=goal,
                 )
             except ValidationError as exc:  # e.g. a tool step without a tool name
                 problems = [PlanProblem("invalid_step", "plan", e["msg"]) for e in exc.errors()[:6]]

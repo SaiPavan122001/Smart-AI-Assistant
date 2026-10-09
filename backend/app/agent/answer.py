@@ -14,6 +14,7 @@ from typing import Any
 
 from app.models.enums import AnswerStatus, StepStatus, TaskOutcome, TaskStatus
 from app.models.plan import Plan, PlanStep
+from app.models.report import CompletionReport
 from app.utils.errors import ErrorCode, ErrorInfo
 from app.utils.templating import REF_PATTERN, TemplateError, lookup, template_refs
 
@@ -31,6 +32,7 @@ _POLICY_CODES = {
     ErrorCode.COMMAND_BLOCKED,
     ErrorCode.URL_BLOCKED,
     ErrorCode.INJECTION_BLOCKED,
+    ErrorCode.GOAL_VIOLATION,
 }
 
 
@@ -41,7 +43,21 @@ class AnswerDecision:
     missing: list[str] = field(default_factory=list)  # template references that had no value
 
 
-def outcome_of(status: TaskStatus, error: ErrorInfo | None) -> TaskOutcome:
+def is_partial(status: TaskStatus, report: CompletionReport | None) -> bool:
+    """A FAILED task whose explicit requirements are met in part: at least one holds in the real final
+    state (and the task changed something to get there) while at least one other does not."""
+    return (
+        status is TaskStatus.FAILED
+        and report is not None
+        and bool(report.effects)
+        and bool(report.met)
+        and bool(report.unmet or report.unverified)
+    )
+
+
+def outcome_of(
+    status: TaskStatus, error: ErrorInfo | None, report: CompletionReport | None = None
+) -> TaskOutcome:
     if status is TaskStatus.COMPLETED:
         return TaskOutcome.COMPLETED
     if status is TaskStatus.CANCELLED:
@@ -55,7 +71,7 @@ def outcome_of(status: TaskStatus, error: ErrorInfo | None) -> TaskOutcome:
         return TaskOutcome.LOOP_DETECTED
     if code is ErrorCode.PLAN_INVALID:
         return TaskOutcome.PLAN_INVALID
-    return TaskOutcome.FAILED
+    return TaskOutcome.PARTIAL if is_partial(status, report) else TaskOutcome.FAILED
 
 
 def is_superseded(step: PlanStep) -> bool:
@@ -74,10 +90,25 @@ def incomplete_required_steps(plan: Plan | None) -> list[PlanStep]:
     ]
 
 
-def failure_statement(outcome: TaskOutcome, error: ErrorInfo | None) -> str:
+def failure_statement(
+    outcome: TaskOutcome, error: ErrorInfo | None, report: CompletionReport | None = None
+) -> str:
     """Truthful, status-specific text for a task that did not succeed. Never a success claim."""
+    base = _failure_core(outcome, error)
+    if report is not None and (report.completed or report.failed or report.requirements):
+        progress = report.progress_text()
+        if progress:
+            return f"{base}\n{progress}"[:1800]
+    return base
+
+
+def _failure_core(outcome: TaskOutcome, error: ErrorInfo | None) -> str:
     detail = (error.message if error else "").strip()[:400]
     code = error.code if error else None
+    if outcome is TaskOutcome.PARTIAL:
+        return "The task was only partly completed; the request as a whole was NOT fulfilled." + (
+            f" Reason: {detail}" if detail else ""
+        )
     if outcome is TaskOutcome.CANCELLED:
         return (
             "The task was stopped before it finished, so the request was not completed. "
@@ -89,6 +120,11 @@ def failure_statement(outcome: TaskOutcome, error: ErrorInfo | None) -> str:
             "Actions already performed were not undone."
         )
     if outcome is TaskOutcome.DENIED:
+        if code is ErrorCode.GOAL_VIOLATION:
+            return (
+                "The task was not completed: a step would have broken a restriction in your request, "
+                "so it was not performed." + (f" ({detail})" if detail else "")
+            )
         if code in _DENIAL_CODES:
             return (
                 "The task was not completed: a required action was not approved, "
@@ -201,15 +237,16 @@ def decide_answer(
     plan: Plan | None,
     step_data: dict[str, dict[str, Any]],
     step_answers: dict[str, str],
+    report: CompletionReport | None = None,
 ) -> AnswerDecision:
     """The one place a final answer is produced. Eligibility for a success answer:
 
     task COMPLETED  AND  final verification passed  AND  every required step succeeded
     AND  every template field exists in the recorded output of a succeeded step.
     """
-    outcome = outcome_of(status, error)
+    outcome = outcome_of(status, error, report)
     if outcome is not TaskOutcome.COMPLETED:
-        return AnswerDecision(AnswerStatus.WITHHELD, failure_statement(outcome, error))
+        return AnswerDecision(AnswerStatus.WITHHELD, failure_statement(outcome, error, report))
     if not verification_passed or incomplete_required_steps(plan):
         # A COMPLETED task always has both; if a caller ever gets here the answer is not rendered.
         return AnswerDecision(AnswerStatus.UNAVAILABLE, UNAVAILABLE_TEXT)

@@ -333,6 +333,59 @@
         "title": "Capability",
         "type": "string"
       },
+      "CompletionReport": {
+        "description": "Built from the final state only. Lists are bounded; texts are short, redacted summaries.",
+        "properties": {
+          "completed": {
+            "items": {
+              "$ref": "#/components/schemas/StepReport"
+            },
+            "title": "Completed",
+            "type": "array"
+          },
+          "effects": {
+            "description": "side-effecting tool calls that succeeded (not undone)",
+            "items": {
+              "type": "string"
+            },
+            "title": "Effects",
+            "type": "array"
+          },
+          "failed": {
+            "items": {
+              "$ref": "#/components/schemas/StepReport"
+            },
+            "title": "Failed",
+            "type": "array"
+          },
+          "not_run": {
+            "items": {
+              "$ref": "#/components/schemas/StepReport"
+            },
+            "title": "Not Run",
+            "type": "array"
+          },
+          "recoveries": {
+            "default": 0,
+            "title": "Recoveries",
+            "type": "integer"
+          },
+          "replans": {
+            "default": 0,
+            "title": "Replans",
+            "type": "integer"
+          },
+          "requirements": {
+            "items": {
+              "$ref": "#/components/schemas/RequirementResult"
+            },
+            "title": "Requirements",
+            "type": "array"
+          }
+        },
+        "title": "CompletionReport",
+        "type": "object"
+      },
       "Correlation": {
         "properties": {
           "plan_id": {
@@ -458,6 +511,7 @@
           "command_blocked",
           "url_blocked",
           "prompt_injection_blocked",
+          "goal_violation",
           "not_found",
           "already_exists",
           "element_not_found",
@@ -538,7 +592,8 @@
           "task_cancelled",
           "task_timed_out",
           "limit_reached",
-          "kill_switch"
+          "kill_switch",
+          "checkpoint_saved"
         ],
         "title": "EventType",
         "type": "string"
@@ -586,6 +641,31 @@
           "type"
         ],
         "title": "ExecutionEvent",
+        "type": "object"
+      },
+      "GoalSpec": {
+        "properties": {
+          "prohibitions": {
+            "items": {
+              "$ref": "#/components/schemas/Prohibition"
+            },
+            "title": "Prohibitions",
+            "type": "array"
+          },
+          "request": {
+            "default": "",
+            "title": "Request",
+            "type": "string"
+          },
+          "requirements": {
+            "items": {
+              "$ref": "#/components/schemas/Requirement"
+            },
+            "title": "Requirements",
+            "type": "array"
+          }
+        },
+        "title": "GoalSpec",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -836,6 +916,16 @@
             "title": "Created At",
             "type": "string"
           },
+          "goal": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GoalSpec"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "id": {
             "title": "Id",
             "type": "string"
@@ -1015,6 +1105,38 @@
         "title": "PlanStep",
         "type": "object"
       },
+      "Prohibition": {
+        "properties": {
+          "forbid_overwrite": {
+            "default": false,
+            "title": "Forbid Overwrite",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "text": {
+            "description": "the user's restriction, quoted from the request",
+            "title": "Text",
+            "type": "string"
+          },
+          "tools": {
+            "description": "tools that may not run",
+            "items": {
+              "type": "string"
+            },
+            "title": "Tools",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "text"
+        ],
+        "title": "Prohibition",
+        "type": "object"
+      },
       "Readiness": {
         "properties": {
           "checks": {
@@ -1033,6 +1155,126 @@
         ],
         "title": "Readiness",
         "type": "object"
+      },
+      "Requirement": {
+        "properties": {
+          "count": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "min_urls: how many were requested",
+            "title": "Count"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/RequirementKind"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "artifact: file name the user gave",
+            "title": "Name"
+          },
+          "path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "artifact: exact path the user gave",
+            "title": "Path"
+          },
+          "text": {
+            "description": "what the request demands, in plain words",
+            "title": "Text",
+            "type": "string"
+          },
+          "where": {
+            "default": "answer",
+            "enum": [
+              "artifact",
+              "answer"
+            ],
+            "title": "Where",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "text"
+        ],
+        "title": "Requirement",
+        "type": "object"
+      },
+      "RequirementKind": {
+        "enum": [
+          "artifact",
+          "min_urls",
+          "grounded_summary"
+        ],
+        "title": "RequirementKind",
+        "type": "string"
+      },
+      "RequirementResult": {
+        "description": "Outcome of one requirement against the real final state.",
+        "properties": {
+          "evidence": {
+            "default": "",
+            "title": "Evidence",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/RequirementStatus"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "text",
+          "status"
+        ],
+        "title": "RequirementResult",
+        "type": "object"
+      },
+      "RequirementStatus": {
+        "enum": [
+          "met",
+          "unmet",
+          "unverified"
+        ],
+        "title": "RequirementStatus",
+        "type": "string"
       },
       "RetryPolicy": {
         "properties": {
@@ -1133,6 +1375,34 @@
         ],
         "title": "StepKind",
         "type": "string"
+      },
+      "StepReport": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "summary": {
+            "default": "",
+            "title": "Summary",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "status"
+        ],
+        "title": "StepReport",
+        "type": "object"
       },
       "StepStatus": {
         "enum": [
@@ -1461,7 +1731,8 @@
           "TIMED_OUT",
           "DENIED",
           "LOOP_DETECTED",
-          "PLAN_INVALID"
+          "PLAN_INVALID",
+          "PARTIAL"
         ],
         "title": "TaskOutcome",
         "type": "string"
@@ -1516,6 +1787,16 @@
           "outcome": {
             "$ref": "#/components/schemas/TaskOutcome",
             "default": "FAILED"
+          },
+          "report": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CompletionReport"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "status": {
             "$ref": "#/components/schemas/TaskStatus"
