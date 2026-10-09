@@ -26,6 +26,17 @@ _COUNT = re.compile(
     re.I,
 )
 _URL_WORD = re.compile(r"\b(urls?|links?|web ?addresses)\b", re.I)
+# "the URL of each", "title and URL", "retrieve ... the URL": the answer or file must carry a source URL.
+_URL_ASKED = re.compile(
+    r"\burls? of (?:each|every|the|it|them)\b|\btitles? and (?:the )?(?:page )?urls?\b"
+    r"|\b(?:retrieve|identify|report|return|give me|tell me|list|extract|find|provide)\b[^.!?]{0,40}\burls?\b",
+    re.I,
+)
+_DOMAIN = re.compile(
+    r"\b(?:from|on|at|via|within|only)\s+(?:the\s+)?(?:website\s+|site\s+)?"
+    r"((?:[a-z0-9-]+\.)+(?:com|org|io|dev|net|edu|gov|ai|co|app|info|tech))\b",
+    re.I,
+)
 _FILE_EXT = "md|markdown|txt|json|csv|html|xml|ya?ml|py|docx?|xlsx|pdf|rtf|log"
 _FILE_TOKEN = re.compile(rf"^[^\s\"'<>|*?]+\.(?:{_FILE_EXT})$", re.I)
 _QUOTED = re.compile(r"[\"'`]([^\"'`\n]{1,200}?\.(?:" + _FILE_EXT + r"))[\"'`]", re.I)
@@ -141,20 +152,26 @@ def extract_goal(instruction: str) -> GoalSpec:
         )
     goal.requirements.extend(artifacts)
 
-    # ---- number of sources, with URLs
+    # ---- sources with URLs: how many, and from where
     count = _COUNT.search(text)
+    domains = [d.lower() for d in dict.fromkeys(m.group(1) for m in _DOMAIN.finditer(text))]
+    wanted = 0
     if count and _URL_WORD.search(text):
         wanted = _number(count.group(1))
-        if wanted >= 2:
-            goal.requirements.append(
-                Requirement(
-                    id=rid("r"),
-                    kind=RequirementKind.MIN_URLS,
-                    count=wanted,
-                    where="artifact" if artifacts else "answer",
-                    text=f"provide {wanted} distinct sources with their URLs",
-                )  # fmt: skip
-            )
+    if wanted < 2 and (_URL_ASKED.search(text) or (domains and _URL_WORD.search(text))):
+        wanted = 1
+    if wanted >= 1:
+        goal.requirements.append(
+            Requirement(
+                id=rid("r"),
+                kind=RequirementKind.MIN_URLS,
+                count=wanted,
+                domains=domains,
+                where="artifact" if artifacts else "answer",
+                text=f"provide {wanted} distinct source URL{'s' if wanted > 1 else ''}"
+                + (f" on {', '.join(domains)}" if domains else ""),
+            )  # fmt: skip
+        )
 
     # ---- a saved summary must come from what was actually read
     if artifacts and _SUMMARISE.search(text):

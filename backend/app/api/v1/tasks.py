@@ -137,3 +137,13 @@ async def task_permission_decisions(
 async def task_agent_actions(task_id: str, c: ContainerDep) -> list[AgentActionRecord]:
     await _load(c, task_id)
     return await c.repo.list_agent_actions(task_id)
+
+
+@router.get("/{task_id}/checkpoints", response_model=list[AgentActionRecord])
+async def task_checkpoints(task_id: str, c: ContainerDep) -> list[AgentActionRecord]:
+    """Progress snapshots taken at step boundaries (what is done, what remains, what recovery did).
+
+    Informational only: a task is not resumed from a checkpoint after a process restart.
+    """
+    await _load(c, task_id)
+    return [a for a in await c.repo.list_agent_actions(task_id) if a.kind == "checkpoint"]

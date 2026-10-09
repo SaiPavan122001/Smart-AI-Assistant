@@ -12,6 +12,7 @@ import os
 import re
 import time
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from app.models.goal import (
     GoalSpec,
@@ -177,6 +178,14 @@ def _check_urls(
     found = list(dict.fromkeys(urls_in(text)))
     invented = [u for u in found if u not in ctx.observed.urls]
     grounded = [u for u in found if u in ctx.observed.urls]
+    if req.domains and not invented:  # only sources on the requested sites count
+        grounded = [u for u in grounded if _on_domain(u, req.domains)]
+        if len(grounded) < wanted:
+            return _unmet(
+                req,
+                f"{where} has {len(grounded)} source URL(s) on {', '.join(req.domains)}; "
+                f"{wanted} were requested",
+            )
     if invented:
         return _unmet(
             req, f"{len(invented)} URL(s) in {where} were never returned by any tool: " + ", ".join(invented[:3])
@@ -209,6 +218,11 @@ def _check_grounded(
             f"(needs {MIN_GROUNDED_RATIO:.0%})",
         )  # fmt: skip
     return _met(req, f"{ratio:.0%} of {f.name}'s distinctive words occur in what was read")
+
+
+def _on_domain(url: str, domains: list[str]) -> bool:
+    host = (urlsplit(url).hostname or "").lower()
+    return any(host == d or host.endswith("." + d) for d in domains)
 
 
 def as_verifications(task_id: str, results: list[RequirementResult]) -> list[VerificationResult]:

@@ -184,6 +184,11 @@ def test_task_runs_to_completion_with_timeline(api: Api) -> None:
         == "fs_create"
     )
     assert api.c.get(f"/api/v1/tasks/{t['id']}/verifications", headers=AUTH).json()
+    cps = api.c.get(f"/api/v1/tasks/{t['id']}/checkpoints", headers=AUTH).json()
+    assert [c["kind"] for c in cps] == ["checkpoint"] * len(cps) and cps
+    assert cps[-1]["payload"]["remaining"] == [] and cps[-1]["payload"]["completed"] == ["s1"]
+    assert "checkpoint_saved" in types
+    assert api.c.get("/api/v1/tasks/nope/checkpoints", headers=AUTH).status_code == 404
     decisions = api.c.get(f"/api/v1/permissions/decisions?task_id={t['id']}", headers=AUTH).json()
     assert decisions and decisions[0]["action"] == "allow"
     metrics = api.c.get("/metrics", headers=AUTH).text

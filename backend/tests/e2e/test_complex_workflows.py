@@ -338,7 +338,7 @@ async def test_an_adaptive_step_cannot_delete_when_the_request_forbids_it(env: E
                 "title": "Tidy",
                 "kind": "adaptive",
                 "goal": "Tidy up",
-                "allowed_tools": ["fs_list", "fs_read"],
+                "allowed_tools": [],  # every tool is exposed: only the router stands in the way
                 "rationale": "tidy",
             }
         ],
@@ -354,8 +354,11 @@ async def test_an_adaptive_step_cannot_delete_when_the_request_forbids_it(env: E
     task = await h.run("Tidy the workspace. Do not delete anything.")
     assert task.status == TaskStatus.FAILED
     assert (base / "misc" / "readme.txt").exists()
-    perms = [t for t in await env.repo.list_events(task.id) if t.type.value == "action_failed"]
-    assert not any(e.data.get("tool") == "fs_delete" and e.data.get("ok") for e in perms)
+    failed = [e for e in await env.repo.list_events(task.id) if e.type.value == "action_failed"]
+    assert any(e.data.get("code") == "goal_violation" for e in failed), (
+        "the router, not the model, refused"
+    )
+    assert not env.approvals.pending(), "a forbidden action is not even put to the user"
 
 
 # ----------------------------------------------------------------------------- checkpoints

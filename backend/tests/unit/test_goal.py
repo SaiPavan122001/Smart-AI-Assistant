@@ -220,3 +220,33 @@ def test_path_outside_roots_cannot_be_probed(env: Env, tmp_path: Path) -> None:
     goal, ctx = _goal_ctx(env, f"Save the report as {tmp_path / 'outside' / 'r.md'}")
     res = evaluate_goal(goal, ctx, answer=None)
     assert res[0].status is RequirementStatus.UNMET and "cannot check" in res[0].evidence
+
+
+def test_single_url_and_required_domains() -> None:
+    g = extract_goal(
+        "Open the official Spring Boot documentation, retrieve the page title and URL, then save a short summary into the workspace"
+    )
+    urls = [r for r in g.requirements if r.kind is RequirementKind.MIN_URLS]
+    assert [(r.count, r.where) for r in urls] == [(1, "artifact")]
+    g = extract_goal("Search the web for Spring Boot and tell me the URL of the top result")
+    assert [(r.count, r.where) for r in g.requirements] == [(1, "answer")]
+    g = extract_goal("Find 3 tutorials from spring.io and give me their links")
+    assert [(r.count, r.domains) for r in g.requirements] == [(3, ["spring.io"])]
+    # a URL the user merely supplies is not something to deliver
+    assert extract_goal("Open https://example.com and tell me the page title").is_empty()
+    assert extract_goal("Go to the URL https://example.com/a and click the button").is_empty()
+
+
+def test_required_domain_only_counts_sources_on_that_site(env: Env) -> None:
+    goal, ctx = _goal_ctx(env, "Find 2 tutorials from spring.io and give me their links")
+    ctx.observed.urls.update(
+        {"https://spring.io/guides/a", "https://docs.spring.io/b", "https://other.dev/c"}
+    )
+    ok = evaluate_goal(goal, ctx, answer="https://spring.io/guides/a and https://docs.spring.io/b")
+    assert ok[0].status is RequirementStatus.MET
+    off = evaluate_goal(goal, ctx, answer="https://spring.io/guides/a and https://other.dev/c")
+    assert off[0].status is RequirementStatus.UNMET and "on spring.io" in off[0].evidence
+    lookalike = evaluate_goal(
+        goal, ctx, answer="https://spring.io/guides/a and https://notspring.io/x"
+    )
+    assert lookalike[0].status is RequirementStatus.UNMET

@@ -33,6 +33,7 @@ class Requirement(BaseModel):
     path: str | None = Field(default=None, description="artifact: exact path the user gave")
     count: int | None = Field(default=None, ge=1, description="min_urls: how many were requested")
     where: Literal["artifact", "answer"] = "answer"  # min_urls: where the URLs must appear
+    domains: list[str] = Field(default_factory=list, description="min_urls: only these sites count")
 
 
 class Prohibition(BaseModel):
