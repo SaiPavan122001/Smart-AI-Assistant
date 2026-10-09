@@ -375,6 +375,11 @@ async def test_checkpoints_track_progress_without_leaking_secrets(env: Env) -> N
     assert len(cps) >= 5  # after each of the four steps, and at the end
     first, last = cps[0].payload, cps[-1].payload
     assert first["completed"] == ["s1"] and first["remaining"] == ["s2", "s3", "s4"]
+    assert len(first["outstanding_requirements"]) == 2, (
+        "nothing is saved yet: both requirements are outstanding"
+    )
+    mid = cps[2].payload  # after the documents were read, before the summary exists
+    assert mid["completed"] == ["s1", "s2", "s3"] and mid["outstanding_requirements"]
     assert (
         last["remaining"] == [] and last["task_status"] and last["outstanding_requirements"] == []
     )
@@ -450,3 +455,114 @@ async def test_two_matching_documents_are_not_guessed(env: Env) -> None:
     task = await h.run("Find the project requirements document and summarize it")
     assert task.status == TaskStatus.FAILED and task.result
     assert not task.result.verified and task.result.answer_status is AnswerStatus.WITHHELD
+
+
+# ----------------------------------------------------------------------------- limits, STOP, pause, bad references
+async def test_stop_mid_workflow_keeps_finished_work_and_never_recovers(tmp_path: Path) -> None:
+    from tests.helpers import make_env
+
+    env = make_env(tmp_path)
+    base = env.documents / "ws"
+    build_java_workspace(base)
+    h = make_harness(env, [structured(java_plan(base)), *adaptive_write(base, GOOD_SUMMARY)])
+    orig = env.router.execute
+
+    async def stop_after_organize(call: Any, ctx: Any) -> Any:
+        result = await orig(call, ctx)
+        if call.tool == "fs_organize":
+            await h.runtime.cancel(ctx.task_id)
+        return result
+
+    env.router.execute = stop_after_organize  # type: ignore[method-assign]
+    task = await h.run(INSTR)
+    r = task.result
+    assert task.status == TaskStatus.CANCELLED and r and not r.verified
+    assert r.outcome is TaskOutcome.CANCELLED and r.answer_status is AnswerStatus.WITHHELD
+    assert h.llm.purposes == ["plan"], "no model call, recovery or re-plan after STOP"
+    assert (base / "Java" / "java-basics.pdf").exists() or (
+        base / "Java" / "Intro_to_OOP.pdf"
+    ).exists()
+    assert not (base / "Java-summary.md").exists()
+    assert r.report and [s.id for s in r.report.completed] == ["s1"]
+    assert [s.id for s in r.report.interrupted] == ["s2"], (
+        "the move ran but the step was cut off: say so"
+    )
+    assert [s.id for s in r.report.not_run] == ["s3", "s4"]
+    assert "stopped before it finished" in (r.answer or "") and "not undone" in (r.answer or "")
+    assert any(q.status is RequirementStatus.UNMET for q in r.report.requirements)
+
+
+async def test_action_budget_ends_the_workflow_with_a_truthful_account(tmp_path: Path) -> None:
+    from app.config.settings import LimitSettings
+
+    from tests.helpers import make_env
+
+    env = make_env(tmp_path, limits=LimitSettings(max_actions=1, approval_timeout_s=5))
+    base = env.documents / "ws"
+    build_java_workspace(base)
+    h = make_harness(
+        env,
+        [structured(java_plan(base)), *adaptive_write(base, GOOD_SUMMARY)],
+        fallback=lambda r: tool_use("finish_step", success=False, summary="limit"),
+    )
+    task = await h.run(INSTR)
+    r = task.result
+    assert task.status == TaskStatus.FAILED and r and not r.verified
+    assert r.error and r.error.code.value == "limit_exceeded"
+    assert h.llm.purposes == ["plan", "step"], (
+        "the model is not asked for another way once a budget is spent"
+    )
+    assert not (env.documents / "ws" / "Java-summary.md").exists()
+    assert r.report and r.report.effects == ["fs_organize"]
+    assert [s.id for s in r.report.completed] == ["s1", "s2", "s3"] and [
+        s.id for s in r.report.failed
+    ] == ["s4"]
+    assert r.answer_status is AnswerStatus.WITHHELD and "Done:" in (r.answer or "")
+
+
+async def test_wrong_output_reference_is_repaired_before_anything_runs(env: Env) -> None:
+    base = env.documents / "ws"
+    build_java_workspace(base)
+    bad = java_plan(base)
+    bad["steps"][1]["args"]["sources"] = "{{steps.s1.data.matches}}"  # fs_find has no such field
+    good = java_plan(base)
+    h = make_harness(env, [structured(bad), structured(good), *adaptive_write(base, GOOD_SUMMARY)])
+    task = await h.run(INSTR)
+    assert h.llm.purposes[:2] == ["plan", "repair"]
+    assert task.status == TaskStatus.COMPLETED, task.result
+    repair = h.llm.requests[1].messages[-1].content
+    assert "strong_paths" in str(repair), "the repair message lists the fields that really exist"
+
+
+async def test_pause_between_workflow_steps_parks_without_acting(env: Env) -> None:
+    import asyncio
+
+    base = env.documents / "ws"
+    build_java_workspace(base)
+    h = make_harness(env, [structured(java_plan(base)), *adaptive_write(base, GOOD_SUMMARY)])
+    orig = env.router.execute
+    paused = asyncio.Event()
+
+    async def pause_after_find(call: Any, ctx: Any) -> Any:
+        result = await orig(call, ctx)
+        if call.tool == "fs_find" and not paused.is_set():
+            paused.set()
+            await h.runtime.pause(ctx.task_id)
+        return result
+
+    env.router.execute = pause_after_find  # type: ignore[method-assign]
+    submitted = await h.runtime.submit(INSTR)
+    await asyncio.wait_for(paused.wait(), 20)
+    await asyncio.sleep(0.5)
+    assert not (base / "Java").exists(), "nothing moves while paused"
+    mid = await env.repo.get_task(submitted.id)
+    assert mid is not None and mid.status == TaskStatus.PAUSED
+    await h.runtime.resume(submitted.id)
+    await h.runtime.wait(submitted.id, 30)
+    done = await env.repo.get_task(submitted.id)
+    assert (
+        done is not None
+        and done.status == TaskStatus.COMPLETED
+        and done.result
+        and done.result.verified
+    )

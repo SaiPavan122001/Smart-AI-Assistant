@@ -129,6 +129,7 @@ export interface StepReport {
 export interface CompletionReport {
   completed: StepReport[];
   failed: StepReport[];
+  interrupted?: StepReport[];
   not_run: StepReport[];
   requirements: RequirementResult[];
   effects: string[];

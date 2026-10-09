@@ -26,16 +26,11 @@ def build_report(
     return CompletionReport(
         completed=[_row(s) for s in steps if s.status is StepStatus.SUCCEEDED],
         failed=[_row(s) for s in steps if s.status is StepStatus.FAILED],
+        interrupted=[
+            _row(s) for s in steps if s.status in (StepStatus.RUNNING, StepStatus.WAITING_APPROVAL)
+        ],
         not_run=[
-            _row(s)
-            for s in steps
-            if s.status
-            in (
-                StepStatus.PENDING,
-                StepStatus.SKIPPED,
-                StepStatus.RUNNING,
-                StepStatus.WAITING_APPROVAL,
-            )
+            _row(s) for s in steps if s.status in (StepStatus.PENDING, StepStatus.SKIPPED)
         ],  # fmt: skip
         requirements=requirements,
         effects=effects[:40],

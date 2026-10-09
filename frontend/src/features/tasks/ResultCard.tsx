@@ -18,6 +18,7 @@ function Progress({ report }: { report: CompletionReport }) {
   const rows = [
     ["Done", report.completed],
     ["Failed", report.failed],
+    ["Interrupted (may have partly completed)", report.interrupted ?? []],
     ["Not run", report.not_run],
   ] as const;
   return (

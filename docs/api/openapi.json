@@ -358,6 +358,14 @@
             "title": "Failed",
             "type": "array"
           },
+          "interrupted": {
+            "description": "was running when the task ended: its action may have completed",
+            "items": {
+              "$ref": "#/components/schemas/StepReport"
+            },
+            "title": "Interrupted",
+            "type": "array"
+          },
           "not_run": {
             "items": {
               "$ref": "#/components/schemas/StepReport"

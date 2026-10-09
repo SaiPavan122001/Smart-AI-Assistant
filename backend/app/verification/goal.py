@@ -11,6 +11,7 @@ from __future__ import annotations
 import os
 import re
 import time
+from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -218,6 +219,11 @@ def _check_grounded(
             f"(needs {MIN_GROUNDED_RATIO:.0%})",
         )  # fmt: skip
     return _met(req, f"{ratio:.0%} of {f.name}'s distinctive words occur in what was read")
+
+
+def epoch(moment: datetime | None) -> float:
+    """Seconds since the epoch of the task start (an hour ago when unknown)."""
+    return moment.timestamp() if moment is not None else time.time() - 3600
 
 
 def _on_domain(url: str, domains: list[str]) -> bool:

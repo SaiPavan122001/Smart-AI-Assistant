@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import time
 from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
 
 from pydantic import BaseModel
@@ -63,7 +62,7 @@ from app.utils.errors import (
 from app.utils.ids import utcnow
 from app.utils.templating import TemplateError, referenced_steps, resolve
 from app.verification.engine import VerificationEngine
-from app.verification.goal import as_verifications, evaluate_goal
+from app.verification.goal import as_verifications, epoch, evaluate_goal
 
 log = get_logger("runner")
 
@@ -400,7 +399,7 @@ class TaskRunner:
         preview = candidate_answer(rs.plan, rs.step_data, rs.step_answers)
         found = evaluate_goal(
             rs.goal, ctx, answer=preview.text if preview.status is AnswerStatus.ANSWERED else None,
-            since=_epoch(rs.task.started_at),
+            since=epoch(rs.task.started_at),
         )  # fmt: skip
         rs.requirement_results = found
         goal_checks = as_verifications(rs.task.id, found)
@@ -653,7 +652,11 @@ class TaskRunner:
         found = rs.requirement_results
         if rs.goal is not None and rs.goal.requirements:
             try:
-                found = evaluate_goal(rs.goal, ctx, answer=None, since=_epoch(rs.task.started_at))
+                preview = candidate_answer(rs.plan, rs.step_data, rs.step_answers)
+                found = evaluate_goal(
+                    rs.goal, ctx, answer=preview.text if preview.status is AnswerStatus.ANSWERED else None,
+                    since=epoch(rs.task.started_at),
+                )  # fmt: skip
                 rs.requirement_results = found
             except Exception:  # reporting must not fail the task
                 log.debug("goal evaluation for the report failed", exc_info=True)
@@ -716,10 +719,6 @@ class TaskRunner:
         if answer.status is AnswerStatus.ANSWERED and answer.text:
             lines.append("Answer: " + answer.text[:600])
         return "\n".join(lines)
-
-
-def _epoch(moment: datetime | None) -> float:
-    return moment.timestamp() if moment is not None else time.time() - 3600
 
 
 class TaskFailure(AgentError):

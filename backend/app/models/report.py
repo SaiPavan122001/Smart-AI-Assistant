@@ -19,6 +19,10 @@ class CompletionReport(BaseModel):
 
     completed: list[StepReport] = Field(default_factory=list)
     failed: list[StepReport] = Field(default_factory=list)
+    interrupted: list[StepReport] = Field(
+        default_factory=list,
+        description="was running when the task ended: its action may have completed",
+    )
     not_run: list[StepReport] = Field(default_factory=list)
     requirements: list[RequirementResult] = Field(default_factory=list)
     effects: list[str] = Field(
@@ -48,6 +52,12 @@ class CompletionReport(BaseModel):
             lines.append(
                 "Failed: "
                 + "; ".join(f"{s.title} ({s.summary[:100]})" for s in self.failed[:4])
+                + "."
+            )
+        if self.interrupted:
+            lines.append(
+                "Interrupted (may have partly completed): "
+                + "; ".join(s.title for s in self.interrupted[:4])
                 + "."
             )
         if self.not_run:

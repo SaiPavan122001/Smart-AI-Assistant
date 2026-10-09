@@ -127,6 +127,37 @@ async def main(which: str) -> None:
                 r = await call("desktop_find_element", window_title="Calculator", query=q)
                 for m in (r.data.get("matches") or [])[:3]:
                     print("     ", m)
+        elif (
+            which == "vscode"
+        ):  # NEXT-A: what does the REAL VS Code expose through UI Automation? (read-only)
+            proj = root / "w" / "vscode-probe"
+            proj.mkdir(parents=True, exist_ok=True)
+            (proj / "hello.py").write_text("print('hello from the probe')\n")
+            await call("desktop_launch", app="vscode", args=[str(proj)])
+            await asyncio.sleep(8.0)  # Electron starts slowly
+            wins = await call("desktop_windows")
+            for w in (wins.data.get("windows") or [])[:15]:
+                print("   window:", w.get("title", "")[:70], "|", w.get("process"))
+            r = await call("desktop_read", window_process="Code.exe", mode="tree", max_elements=150)
+            tree = r.data.get("tree") or []
+            print(f"   tree lines: {len(tree)}")
+            for line in tree[:60]:
+                print("  ", line)
+            for q, role in [
+                ("Explorer", None),
+                ("hello.py", None),
+                ("Editor", None),
+                ("Terminal", None),
+                ("Search", None),
+            ]:
+                fr = await call(
+                    "desktop_find_element",
+                    window_process="Code.exe",
+                    query=q,
+                    **({"role": role} if role else {}),
+                )
+                for m in (fr.data.get("matches") or [])[:2]:
+                    print("     ", m)
         elif which == "chrome":
             await call("browser_open", url="https://www.google.com")
             await call("browser_read", mode="elements")

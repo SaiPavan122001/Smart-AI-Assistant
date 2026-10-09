@@ -311,3 +311,43 @@ async def test_coding_task_cannot_leave_the_workspace_roots(env: Env, tmp_path: 
         and task.result
         and task.result.outcome is TaskOutcome.DENIED
     )
+
+
+async def test_single_url_requirement_is_met_by_the_answer_and_reported_as_met(env: Env) -> None:
+    with_search(env, FakeProvider(HITS))
+    plan = {
+        "summary": "search",
+        "steps": [{"id": "s1", "title": "Search", "tool": "web_search", "args": {"query": "Spring Boot", "max_results": 3}, "rationale": "find"}],
+        "success_criteria": [{"kind": "value_check", "params": {"actual": "{{steps.s1.data.results.length}}", "op": "gte", "expected": 1}}],
+        "answer_template": "The top result is {{steps.s1.data.best.title}}: {{steps.s1.data.best.url}}",
+    }  # fmt: skip
+    task = await make_harness(env, [structured(plan)]).run(
+        "Search the web for Spring Boot and tell me the URL of the top result."
+    )
+    r = task.result
+    assert task.status == TaskStatus.COMPLETED and r and r.verified, r
+    assert [(x.kind, x.status) for x in r.report.requirements] == [
+        ("min_urls", RequirementStatus.MET)
+    ]  # type: ignore[union-attr]
+
+
+async def test_an_answer_without_the_requested_url_is_not_a_success(env: Env) -> None:
+    with_search(env, FakeProvider(HITS))
+    plan = {
+        "summary": "search",
+        "steps": [{"id": "s1", "title": "Search", "tool": "web_search", "args": {"query": "Spring Boot", "max_results": 3}, "rationale": "find"}],
+        "success_criteria": [{"kind": "value_check", "params": {"actual": "{{steps.s1.data.results.length}}", "op": "gte", "expected": 1}}],
+        "answer_template": "The top result is {{steps.s1.data.best.title}}",
+    }  # fmt: skip
+    no_more = {"summary": "stop", "steps": [], "needs_clarification": "cannot add the URL"}
+    task = await make_harness(env, [structured(plan), structured(no_more)]).run(
+        "Search the web for Spring Boot and tell me the URL of the top result."
+    )
+    r = task.result
+    assert (
+        task.status == TaskStatus.FAILED
+        and r
+        and not r.verified
+        and r.answer_status is AnswerStatus.WITHHELD
+    )
+    assert r.report.unmet[0].kind == "min_urls"  # type: ignore[union-attr]

@@ -16,9 +16,11 @@ from typing import Any
 from app.agent.answer import is_superseded
 from app.agent.state import RunState
 from app.models.enums import EventType, StepStatus
+from app.models.goal import RequirementResult
 from app.state.repository import AgentActionRecord, Repository
 from app.tools.context import ExecutionContext
 from app.utils.redact import redact, redact_text
+from app.verification.goal import epoch, evaluate_goal
 
 KIND = "checkpoint"
 
@@ -26,6 +28,14 @@ KIND = "checkpoint"
 def build_checkpoint(rs: RunState, ctx: ExecutionContext, reason: str) -> dict[str, Any]:
     plan = rs.plan
     steps = [s for s in (plan.steps if plan else []) if not is_superseded(s)]
+    found: list[RequirementResult] = []
+    if rs.goal is not None and rs.goal.requirements:
+        try:  # a cheap read of the real state (no disk-wide search): what is still outstanding right now
+            found = evaluate_goal(
+                rs.goal, ctx, answer=None, since=epoch(rs.task.started_at), search=False
+            )
+        except Exception:  # a checkpoint must never break the task
+            found = rs.requirement_results
     usage = rs.handle.meter.usage
     return {
         "reason": reason,
@@ -46,12 +56,8 @@ def build_checkpoint(rs: RunState, ctx: ExecutionContext, reason: str) -> dict[s
         "remaining": [
             s.id for s in steps if s.status in (StepStatus.PENDING, StepStatus.RUNNING, StepStatus.WAITING_APPROVAL)
         ],  # fmt: skip
-        "requirements": [
-            {"id": r.id, "text": r.text, "status": r.status.value} for r in rs.requirement_results
-        ],
-        "outstanding_requirements": [
-            r.id for r in rs.requirement_results if r.status.value != "met"
-        ],
+        "requirements": [{"id": r.id, "text": r.text, "status": r.status.value} for r in found],
+        "outstanding_requirements": [r.id for r in found if r.status.value != "met"],
         "recovery_history": [
             {"step": h.step_id, "strategy": h.strategy.value, "code": h.error_code, "phase": h.phase}
             for h in rs.history[-20:]

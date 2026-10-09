@@ -40,6 +40,22 @@ Add new decisions to this file; do not re-open accepted ones without a new entry
 | D14 | Adaptive loops execute several tool calls per model response in order and stop the batch at the first failure | one model call per click | [agent-efficiency](docs/agent-efficiency.md) |
 | D15 | Local persistence for single-user use is SQLite or PostgreSQL through the same repository port; no migration was added for per-row verification metrics (they live in the result JSON) | avoid schema churn at the checkpoint | [verification](docs/verification.md) |
 
+## Decisions from NEXT-A (complex single-user workflows)
+
+Details: [docs/next-a/implementation.md](docs/next-a/implementation.md). None of these changes a decision above; D7 (a re-plan cannot relax
+criteria) is extended, not replaced.
+
+| # | Decision | Why |
+|---|---|---|
+| N1 | The user's explicit goal (named outputs, source counts, prohibitions) is extracted **by code**, stored on the plan, shown to the planner, and evaluated against the real final state. A re-plan cannot change it | criteria the model forgot to write could not be caught; D7 only protected criteria the model had written |
+| N2 | A restriction in the request ("do not delete anything") is enforced by the router before assessment and approval, and rejected at plan time. Outcome `DENIED`, code `GOAL_VIOLATION` | a sentence in a prompt is not a control; the user must not be asked to approve what they forbade |
+| N3 | A URL is a *source* only if a tool returned it during the task; a saved summary is *grounded* only if its vocabulary comes from text a tool returned | a model can invent a plausible URL or summarise from memory; neither is verifiable by asking the model |
+| N4 | `fs_find` requires confirming `context_terms`; a document without them, or with unreadable text, is `ambiguous` and is never acted on | homonyms (Java the island) are indistinguishable by code alone; found when a test classified the island guide as `strong` |
+| N5 | `fs_organize` validates the whole batch first, never overwrites or deletes, and is idempotent | a half-moved batch followed by a re-plan must not repeat or destroy anything |
+| N6 | `PARTIAL` is an *outcome* (status stays `FAILED`), used only when something changed and a stated requirement holds while another does not; `verified` is never true | keeps the status machine and the release contract; the user still learns what was done |
+| N7 | Checkpoints are progress snapshots stored as agent actions, not resume points; no step output or document text is stored | resume after a restart needs durable workers and idempotent re-entry, which is the production-hardening phase |
+| N8 | Adaptive recovery sees a failed command's stdout/stderr as fenced untrusted data (not in the goal text); a spent budget (`LIMIT_EXCEEDED`) ends an adaptive step immediately | diagnosis needs evidence; program output is untrusted; a spent budget cannot be negotiated with by asking the model again |
+
 ## Explicitly deferred (not decided against, not built)
 
 Multi-user and multi-tenancy, distributed or multi-machine workers, load balancing / autoscaling / Kubernetes, scheduled or recurring
