@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
 from app.models.enums import ApprovalScope, TaskStatus
+from app.models.recovery import Interruption
+from app.models.report import CompletionReport
 from app.models.task import Task, UsageStats
 
 
@@ -41,6 +43,7 @@ class TaskSummary(BaseModel):
     usage: UsageStats
     summary: str | None = None
     verified: bool | None = None
+    restarted_from: str | None = None
 
     @classmethod
     def from_task(cls, t: Task) -> TaskSummary:
@@ -59,7 +62,23 @@ class TaskSummary(BaseModel):
             usage=t.usage,
             summary=t.result.summary if t.result else None,
             verified=t.result.verified if t.result else None,
+            restarted_from=t.restarted_from,
         )
+
+
+class RecoverRequest(BaseModel):
+    action: Literal["resume", "restart", "cancel"] = Field(
+        description="resume: continue from the recorded state. restart: end this task and run the "
+        "same request again as a new task. cancel: end it; completed actions stay in place."
+    )
+
+
+class RecoveryView(BaseModel):
+    """An interrupted task: what was done, what was in flight and how certain its outcome is."""
+
+    task: TaskSummary
+    interruption: Interruption
+    report: CompletionReport
 
 
 class TaskList(BaseModel):

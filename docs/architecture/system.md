@@ -29,8 +29,9 @@ See [ARCHITECTURE.md](../../ARCHITECTURE.md) for the overview. This page adds th
 
 ## Startup / shutdown
 
-`Container.start`: optional `alembic upgrade head` (`AUTO_MIGRATE`) → load persisted policy → start the per-task log sink → mark orphaned tasks failed.
-`Container.stop`: cancel tasks (10 s grace) → close browsers → stop the UIA thread → flush logs → close LLM clients and the DB engine.
+`Container.start`: optional `alembic upgrade head` (`AUTO_MIGRATE`) → load persisted policy → start the per-task log sink → classify tasks the
+previous process left unfinished as `INTERRUPTED` (nothing is resumed; see [restart-recovery](../restart-recovery.md)).
+`Container.stop`: suspend running tasks (10 s grace; they stay resumable, they are not cancelled) → close browsers → stop the UIA thread → flush logs → close LLM clients and the DB engine.
 Prod (`SAA_ENV=prod`) refuses to start without an API token.
 
 ## Health

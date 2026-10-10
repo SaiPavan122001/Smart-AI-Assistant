@@ -56,7 +56,23 @@ criteria) is extended, not replaced.
 | N7 | Checkpoints are progress snapshots stored as agent actions, not resume points; no step output or document text is stored | resume after a restart needs durable workers and idempotent re-entry, which is the production-hardening phase |
 | N8 | Adaptive recovery sees a failed command's stdout/stderr as fenced untrusted data (not in the goal text); a spent budget (`LIMIT_EXCEEDED`) ends an adaptive step immediately | diagnosis needs evidence; program output is untrusted; a spent budget cannot be negotiated with by asking the model again |
 
+## Decisions from the production-reliability roadmap
+
+Branch `phase/production-reliability-roadmap`, started from `a300c2a` (NEXT-A). Roadmap and status: [PHASE_PLAN.md](PHASE_PLAN.md).
+
+| # | Decision | Why |
+|---|---|---|
+| R0 | The phases after NEXT-A are renumbered: NEXT-B restart-safe execution, C security hardening, D transactional file operations, E Windows application automation, F evaluation and live validation, G dashboard, H installable product. The earlier labels (B multi-model comparison, C production hardening, D multi-user, E distributed workers, F scalability) are withdrawn; multi-model comparison, multi-user, distributed workers and scalability stay deferred | the single-user product must be reliable first; a provider or model change is an explicit decision, never a way around a failing health check |
+| R1 | A task that is unfinished when the process stops becomes `INTERRUPTED` and **never resumes by itself**; the user resumes, restarts or cancels. This replaces "marked `FAILED` at startup" and extends N7 (a checkpoint is still not a resume point: recovery reads the plan, step states, `tasks.durable` and the tool-call records) | the agent acts on the user's own desktop; after a crash only the user knows whether continuing is still wanted. Marking the task FAILED threw away work and hid what had already been done |
+| R2 | A side-effecting tool call is recorded **before** it runs (write-ahead). If the record cannot be written the action is not performed | an in-flight action must be visible after a crash; an unrecorded effect cannot be recovered or even reported |
+| R3 | An in-flight action is classified from the observable state only (`Tool.reconcile`, read-only): safe to retry, confirmed done, confirmed not done, uncertain. Confirmed-done results are replayed; **uncertain actions always need an approval for that one call**, enforced in the permission engine above policy, trusted operations and grants. No exactly-once claim | a blind retry can move, submit or run something twice; code cannot know whether a click or a command took effect |
+| R4 | After a restart: task-scoped grants, pending approvals and approvals not yet acted on are void; refusals, the cancel request and prompt-injection taint are kept | a recovered task must not be more permitted than a new one, and must not forget what the user refused |
+| R5 | Cancel and STOP are persisted (`cancel_requested`) before they take effect | a task the user stopped must not come back as resumable because the process died a moment later |
+| R6 | A service shutdown *suspends* tasks instead of cancelling them; it uses the same recovery path as a crash | one code path, exercised by every restart, instead of a second "graceful" one that is rarely tested |
+| R7 | Durable runner state is one JSON column on the task row, written in the same transaction as the plan and steps; no new tables | the state changes together and must never be half-written; the single-user design has one writer |
+| R8 | The browser session is not restored. If remaining steps need an open page, the plan is revised with that fact | a Playwright context cannot be re-attached; pretending the page is still there produces clicks on nothing |
+
 ## Explicitly deferred (not decided against, not built)
 
 Multi-user and multi-tenancy, distributed or multi-machine workers, load balancing / autoscaling / Kubernetes, scheduled or recurring
-tasks, multi-model benchmarking, complex long-horizon workflow coverage. See [PHASE_PLAN.md](PHASE_PLAN.md).
+tasks, multi-model benchmarking. See [PHASE_PLAN.md](PHASE_PLAN.md).

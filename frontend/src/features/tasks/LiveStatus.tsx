@@ -16,11 +16,12 @@ interface Props {
 export function LiveStatus({ view, connection, onPause, onResume, onCancel, busy }: Props) {
   const [now, setNow] = useState(() => new Date().toISOString());
   const active = !isTerminal(view.status);
+  const ticking = active && view.status !== "INTERRUPTED"; // an interrupted task is not running
   useEffect(() => {
-    if (!active) return;
+    if (!ticking) return;
     const t = setInterval(() => setNow(new Date().toISOString()), 1000);
     return () => clearInterval(t);
-  }, [active]);
+  }, [ticking]);
 
   const steps = view.plan?.steps ?? [];
   const done = steps.filter((s) => s.status === "SUCCEEDED" || s.status === "SKIPPED").length;
@@ -39,13 +40,13 @@ export function LiveStatus({ view, connection, onPause, onResume, onCancel, busy
         <div className="kv"><span className="k">Current step</span><span className="v">{view.currentStepTitle ?? "—"}{steps.length > 0 && ` (${Math.min(done + (active ? 1 : 0), steps.length)}/${steps.length})`}</span></div>
         <div className="kv"><span className="k">Current tool</span><span className="v mono">{view.currentTool ?? "—"}</span></div>
         <div className="kv"><span className="k">Application</span><span className="v">{view.currentApplication ?? "—"}</span></div>
-        <div className="kv"><span className="k">Elapsed</span><span className="v">{duration(startedAt, active ? now : view.timeline.at(-1)?.ts)}</span></div>
+        <div className="kv"><span className="k">Elapsed</span><span className="v">{duration(startedAt, ticking ? now : view.timeline.at(-1)?.ts)}</span></div>
         {view.usage && (
           <div className="kv"><span className="k">LLM calls · est. cost</span><span className="v">{view.usage.llm_calls} · {money(view.usage.estimated_cost_usd)}</span></div>
         )}
         {view.result && <VerifiedBadge verified={view.result.verified} />}
         <span className="spacer" />
-        {active && view.taskId && (
+        {active && view.taskId && view.status !== "INTERRUPTED" && (
           <div className="row">
             {view.paused || view.status === "PAUSED" ? (
               <button onClick={onResume} disabled={busy}>Resume</button>

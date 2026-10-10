@@ -39,6 +39,19 @@ An approval request always states **what** the agent wants to do, **why**, **whi
 the technical arguments (redacted) are one click away. Scopes: *once* or *for this task* (not offered for critical risk, arbitrary code
 execution, installs, credential entry, or in tainted tasks). Focus starts on **Deny**; Escape denies. See [approvals.md](docs/security/approvals.md).
 
+## After a restart
+
+A task the service left unfinished is `INTERRUPTED` and does nothing until the user decides ([restart-recovery](docs/restart-recovery.md)).
+A resumed task passes the same router, permission engine, goal restrictions, limits, loop guard and STOP as a new one, and in addition:
+
+* approvals do not carry over: a pending request is void, an approval given but not yet acted on is not reused, and a
+  *for this task* grant is forgotten, so the action is asked again with its exact arguments;
+* a refusal does carry over: an action the user denied is not requested again;
+* an action that was in progress and whose outcome is unknown needs an approval for that one call, even if policy, a trusted
+  operation or a grant would normally allow it;
+* a cancel or STOP is stored before it takes effect, so a task the user stopped is never offered for resume;
+* prompt-injection taint is rebuilt from the recorded tool results before the first action.
+
 ## Known limitations (please read)
 
 These are real gaps, listed so you can decide whether the residual risk is acceptable:

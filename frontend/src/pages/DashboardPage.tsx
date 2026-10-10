@@ -4,6 +4,7 @@ import { ErrorBanner, StatusBadge, when } from "../components/primitives";
 import { ApprovalDialog } from "../features/approvals/ApprovalDialog";
 import { ActivityTimeline } from "../features/tasks/ActivityTimeline";
 import { LiveStatus } from "../features/tasks/LiveStatus";
+import { RecoveryPanel } from "../features/tasks/RecoveryPanel";
 import { ResultCard } from "../features/tasks/ResultCard";
 import { TaskInput } from "../features/tasks/TaskInput";
 import { useAgent } from "../hooks/AgentContext";
@@ -69,6 +70,24 @@ export function DashboardPage() {
             onResume={() => void guard(() => api.resumeTask(taskId))}
             onCancel={() => void guard(() => api.cancelTask(taskId))}
           />
+          {view.status === "INTERRUPTED" && view.interruption && (
+            <RecoveryPanel
+              interruption={view.interruption}
+              onResume={async () => {
+                await api.recoverTask(taskId, "resume");
+                await refresh();
+              }}
+              onRestart={async () => {
+                const t = await api.recoverTask(taskId, "restart");
+                setParams({ task: t.id });
+                await refresh();
+              }}
+              onCancel={async () => {
+                await api.recoverTask(taskId, "cancel");
+                await refresh();
+              }}
+            />
+          )}
           <section className="card" aria-label="Activity">
             <h2>Activity</h2>
             <ActivityTimeline items={view.timeline} />

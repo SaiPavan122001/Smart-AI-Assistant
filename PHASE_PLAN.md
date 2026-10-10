@@ -42,7 +42,7 @@ Mapping of the delivery phases to what exists in the repository. Status: ✅ imp
 
 **Checkpoint: Single-User Core v0.1.0 (`v0.1.0-single-user-core`).** Everything above is done; do not redo it.
 
-## Next-phase backlog (nothing below is started)
+## After the checkpoint
 
 Work starts from the checkpoint. The live gate in [PROJECT_STATUS.md](PROJECT_STATUS.md) is the regression set for every phase:
 it must keep passing and its numbers are the baseline.
@@ -55,39 +55,52 @@ outcome and completion report, checkpoints, failed-command evidence for recovery
 NA1 ran once and was cut off by the model account's spending limit (files verified correct independently), NA2–NA5 did not run.
 Details: [docs/next-a/implementation.md](docs/next-a/implementation.md), [docs/next-a/validation-results.md](docs/next-a/validation-results.md).
 
-Remaining NEXT-A work, in order: (1) raise the LLM key limit and run `NA1`–`NA5` (`SAA_CAMPAIGN_TAG=nexta python -m validation.campaign run NA1`),
-fixing each finding with a regression test; (2) re-run the 18-scenario live gate as the regression set; (3) process-restart recovery
-(below); (4) adaptive-loop cost.
+Remaining NEXT-A work: run `NA1`–`NA5` live and re-run the 18-scenario gate. Both are part of NEXT-F below and are blocked until the
+model key's spending limit is raised (`python -m app llm-check` returns `403 Key limit exceeded`).
 
-Original backlog:
+## Production-reliability roadmap (single user, Windows)
 
-* Long, multi-application tasks (10+ steps, browser + files + desktop in one task); measure completion, calls and recoveries.
-* Reduce adaptive-loop cost: one model call per action today (dynamic page 8 calls, blocked-search fallback 14).
-* Answer completeness for free-text (adaptive) answers; stronger link between the request and the success criteria.
-* Exercise stale-reference recovery and sparse UI Automation apps (Electron) live.
-* Survive a process restart: resume or cleanly re-queue a task instead of marking it FAILED.
+Branch `phase/production-reliability-roadmap`, started from `a300c2a` (the NEXT-A head). One stage at a time; each is committed
+separately after its tests pass. The phase letters after NEXT-A were renumbered for this roadmap (decision R0 in
+[DECISIONS.md](DECISIONS.md)). Status: ✅ done and tested · ◐ partly done, limits documented · ⏳ not started · ⛔ blocked.
 
-### NEXT-B — Multi-model / provider comparison
+| Stage | Scope | Status | Where |
+|---|---|---|---|
+| NEXT-B | Restart-safe task execution and durable recovery | ✅ deterministic (829 backend tests, evals, frontend, Playwright, run as sequential groups); no live-model run | [docs/restart-recovery.md](docs/restart-recovery.md) |
+| NEXT-C | Security and permission hardening | ⏳ audit done, two test files drafted, no application code | |
+| NEXT-D | Transactional file operations, rollback, partial-failure handling | ⏳ | |
+| NEXT-E | Reliable Windows application automation, support matrix | ⏳ | |
+| NEXT-F | Evidence-based evaluation; live validation of NA1–NA5 and the 18-scenario gate | ⏳ deterministic part · ⛔ live part (model key limit) | |
+| NEXT-G | Dashboard usability and task transparency | ◐ recovery panel only (NEXT-B) | |
+| NEXT-H | Installable Windows product and diagnostics | ⏳ | |
 
-* Run the live gate against at least a second model and a second provider; record the same metrics per model.
-* Live runs of the Anthropic, Gemini and plain OpenAI adapters (wire-format tested only today); Brave/Tavily with real keys.
+### NEXT-B — Restart-safe task execution ✅
 
-### NEXT-C — Production hardening (still single-user)
+Checkpoint: an unfinished task survives the death of the process as `INTERRUPTED`; the user resumes, restarts or cancels it; completed
+work is not repeated; an action whose outcome is unknown is never repeated without approval.
 
-* Sandbox approved child processes; tamper-evident audit; retention for events, tool calls and observations.
-* TLS / reverse-proxy guidance, rate limiting, per-client tokens; packaging and installer; choose a license.
-* Execute the Docker Compose PostgreSQL setup and the CI workflow.
+* Persisted with the task: the explicit goal, plan, step states and outputs, recovery history, refusals, the cancel request; a
+  write-ahead record for every side-effecting call (migration `0002`).
+* Startup classifies only. In-flight actions are reconciled against the observable state (`Tool.reconcile`).
+* Resume goes through the same router, permission engine, approvals, limits, loop guard and STOP; grants do not carry over.
+* API `GET /tasks/{id}/recovery`, `POST /tasks/{id}/recover`; dashboard recovery panel.
+* Open: no live-model interruption test (blocked with NEXT-F); reconciliation covers file moves/copies/deletes and page loads only;
+  the all-in-one check script has not completed in one run on this machine (memory), its parts were run one at a time.
 
-### NEXT-D — Multi-user architecture
+### Stages not started
 
-* Accounts, authentication and authorisation, per-user data isolation, per-user policy and secrets.
+NEXT-C: one permission path for every execution route, approvals bound to the exact action, Windows path confinement (junctions,
+reparse points), terminal execution controls, STOP completeness, redaction, local API exposure, injection tests per content type.
+NEXT-D: action journal, undo with precondition checks, staging and verification, rollback that is idempotent and resumable.
+NEXT-E: tested application-support matrix, focus / stale-window / unexpected-dialog detection, postcondition verification.
+NEXT-F: failure scenarios (restart, unavailable application, network, invalid model output, timeout, ambiguity, injection, forbidden
+and contradictory instructions), outcome metrics, redacted run artifacts; then the live gate.
+NEXT-G: goal and requirements view, plan and clarification, evidence versus explanation, per-requirement results.
+NEXT-H: packaging and installation workflow, environment and configuration checks, diagnostics, upgrade and uninstall notes.
 
-### NEXT-E — Distributed computer workers
+### Later (not started, not part of this roadmap)
 
-* A worker per controlled machine, task routing, remote approvals, worker health and recovery.
-
-### NEXT-F — Scalability and load testing
-
-* Load and soak tests, queueing and back-pressure, horizontal scaling of the API tier, capacity baselines.
+Multi-model / provider comparison; multi-user accounts and isolation; a worker per controlled machine; load testing and scaling.
+Still open from the earlier backlog: adaptive-loop cost (about one model call per action), answer completeness for free-text answers.
 
 Also deferred, to be placed when prioritised: scheduled/recurring tasks, job-application automation, large-scale research workflows.

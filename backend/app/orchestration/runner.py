@@ -26,6 +26,7 @@ from app.llm.capabilities import require_for_agent
 from app.llm.gateway import LLMGateway
 from app.models.enums import (
     AnswerStatus,
+    Capability,
     EventType,
     StepKind,
     StepStatus,
@@ -40,6 +41,13 @@ from app.models.verification import VerificationResult, VerificationSpec
 from app.observability.logging import bind, get_logger
 from app.observability.metrics import Metrics
 from app.orchestration.checkpoint import save_checkpoint
+from app.orchestration.recovery import (
+    assess_interruption,
+    build_ledger,
+    close_reconciled,
+    done_before,
+    replay_observations,
+)
 from app.permissions.approvals import ApprovalManager
 from app.planner.goal import extract_goal
 from app.planner.planner import Planner, merge_criteria
@@ -107,21 +115,40 @@ class TaskRunner:
             )  # fmt: skip
 
     # ================================================================== entry point
-    async def run(self, task: Task, handle: TaskHandle) -> TaskResult:
+    async def run(
+        self, task: Task, handle: TaskHandle, *, resume: bool = False
+    ) -> TaskResult | None:
+        """Run a task to its end. ``resume=True`` continues an interrupted task from its persisted
+        state. Returns ``None`` when the service stops first: the task is then left unfinished (and
+        resumable), never reported as failed or cancelled."""
         rs = RunState(task, handle, self.d.bus, self.d.repo)
-        rs.goal = extract_goal(task.instruction)  # the user's own words, fixed for the whole task
-        ctx = self._make_context(rs)
         started = time.monotonic()
         status = TaskStatus.FAILED
         error: ErrorInfo | None = None
         verification: list[VerificationResult] = []
         passed = False  # did the FINAL verification pass? (authoritative; set only on success)
+        suspended = False
+        result: TaskResult | None = None
         with bind(task_id=task.id, session_id=task.session_id, request_id=task.request_id):
+            if resume:
+                ctx, lost = await self._restore(rs)
+            else:
+                # the user's own words, fixed for the whole task
+                rs.goal = extract_goal(task.instruction)
+                ctx, lost = self._make_context(rs), []
             try:
                 async with asyncio.timeout(self._settings.limits.max_execution_seconds):
-                    verification = await self._lifecycle(rs, ctx)
+                    if resume:
+                        verification = await self._resume_lifecycle(rs, ctx, lost)
+                    else:
+                        verification = await self._lifecycle(rs, ctx)
                 status, passed = TaskStatus.COMPLETED, True
+            except asyncio.CancelledError:
+                suspended = True  # the process is going away: this is not the task's outcome
+                raise
             except TaskCancelled as exc:
+                if handle.token.suspended:
+                    suspended = True
                 status, error = (
                     TaskStatus.CANCELLED,
                     ErrorInfo(code=ErrorCode.CANCELLED, message=exc.message or "cancelled"),
@@ -149,19 +176,138 @@ class TaskRunner:
                     ),
                 )
             finally:
-                result = await self._finalize(
-                    rs, ctx, status, error, verification, passed, time.monotonic() - started
-                )
+                if suspended:
+                    await self._suspend(rs, ctx)
+                else:
+                    result = await self._finalize(
+                        rs, ctx, status, error, verification, passed, time.monotonic() - started
+                    )
         return result
 
-    # ================================================================== lifecycle
-    async def _lifecycle(self, rs: RunState, ctx: ExecutionContext) -> list[VerificationResult]:
-        """Plan, execute and verify. Returns the passing final-verification results, or raises."""
+    # ================================================================== interruption / resume
+    async def _suspend(self, rs: RunState, ctx: ExecutionContext) -> None:
+        """The service is stopping. Persist where the task is and release what it holds; do NOT
+        finalize it. Startup recovery turns it into INTERRUPTED and the user decides what happens."""
+        task = rs.task
+        self.d.approvals.cancel_task(task.id)
+        try:
+            if self.d.services.browser is not None:
+                await self.d.services.browser.close_session(task.id)
+            if self.d.services.vision is not None:
+                self.d.services.vision.forget(task.id)
+            await rs.save()
+        except Exception:  # shutting down: the persisted state from the last step boundary stands
+            log.warning("could not persist the task while stopping", exc_info=True)
+        log.warning("task left unfinished by a service stop", extra={"status": task.status.value})
+
+    async def _restore(self, rs: RunState) -> tuple[ExecutionContext, list[str]]:
+        """Rebuild the run from what was persisted and reconcile actions that were in flight."""
+        task = rs.task
+        rs.restore()
+        if rs.goal is None:  # no plan yet: the goal is a pure function of the request
+            rs.goal = extract_goal(task.instruction)
+        ctx = self._make_context(rs)
+        ctx.plan_id = rs.plan.id if rs.plan else None
+        records = await self.d.repo.list_tool_calls(task.id)
+        found = await assess_interruption(task, self.d.repo, self.d.registry, self.d.services)
+        ctx.resume = build_ledger(task, records, found, self.d.registry)
+        await close_reconciled(self.d.repo, task.id, records, found)
+        lost = replay_observations(ctx, records, self.d.registry)
+        for step in rs.plan.steps if rs.plan else []:
+            if step.status in (StepStatus.RUNNING, StepStatus.WAITING_APPROVAL, StepStatus.PENDING):
+                before = done_before(records, step.id, self.d.registry)
+                if before:
+                    rs.done_before[step.id] = before
+        task.interruption = found
+        return ctx, lost
+
+    async def _resume_lifecycle(
+        self, rs: RunState, ctx: ExecutionContext, lost: list[str]
+    ) -> list[VerificationResult]:
+        """Continue an interrupted task. Completed steps are kept (never re-executed); the step that
+        was running starts again, and the router replays what it had already done."""
+        self._require_llm()
+        task = rs.task
+        found = task.interruption
+        await rs.emit(
+            EventType.TASK_RESUMING,
+            "Continuing after an interruption",
+            {
+                "resumes": rs.resumes,
+                "completed_steps": found.completed_steps if found else [],
+                "remaining_steps": found.remaining_steps if found else [],
+                "in_flight": [
+                    {"tool": a.tool, "step_id": a.step_id, "certainty": a.certainty.value, "detail": a.detail}
+                    for a in (found.in_flight if found else [])
+                ],
+            },
+        )  # fmt: skip
+        if rs.plan is None:
+            task.interruption = None
+            return await self._lifecycle(rs, ctx)  # nothing had been done: plan from the start
+        await rs.set_status(
+            TaskStatus.RECOVERING, "Continuing after an interruption: checking the last action"
+        )
+        task.interruption = None
+        task.paused = False
+        for step in rs.plan.steps:
+            if step.status in (StepStatus.RUNNING, StepStatus.WAITING_APPROVAL):
+                step.status = StepStatus.PENDING  # it starts again; finished actions are replayed
+                step.error = None
+        await rs.save()
+        await rs.gate()
+        self._set_llm_budget(rs)
+        reason = self._lost_state_reason(rs, lost)
+        if reason and rs.replans_used < self._settings.limits.max_replans:
+            await self._replan(rs, ctx, reason)
+        await rs.set_status(TaskStatus.EXECUTING)
+        return await self._execute_and_verify(rs, ctx)
+
+    def _lost_state_reason(self, rs: RunState, lost: list[str]) -> str | None:
+        """The browser session does not survive a restart. If the remaining work relies on a page
+        that was open, the plan must be revised (a model call) instead of clicking on nothing."""
+        assert rs.plan is not None
+        if not any(self._capability(t) is Capability.BROWSER for t in lost):
+            return None
+        needs_page = False
+        for step in rs.plan.steps:
+            if step.status is not StepStatus.PENDING:
+                continue
+            if step.kind is StepKind.ADAPTIVE:
+                tools = step.allowed_tools or self.d.registry.names()
+                needs_page = needs_page or any(
+                    self._capability(t) is Capability.BROWSER for t in tools
+                )
+            else:
+                tool = self.d.registry.get(step.tool or "")
+                needs_page = needs_page or bool(
+                    tool and tool.capability is Capability.BROWSER and not tool.establishes_state
+                )
+        if not needs_page:
+            return None
+        return (
+            "The service was restarted while this task was running. The browser session did not "
+            "survive: no page is open any more and element references from before are invalid. "
+            "Open again the pages that are still needed. Steps that already completed (files "
+            "written or moved, commands run) are still in place and must NOT be repeated."
+        )
+
+    def _capability(self, tool_name: str) -> Capability | None:
+        tool = self.d.registry.get(tool_name)
+        return tool.capability if tool else None
+
+    def _require_llm(self) -> None:
         if self.d.planner is None or self._executor is None:
             raise AgentError(
                 "No LLM provider is configured. Set SAA_LLM__PROVIDER and an API key (e.g. ANTHROPIC_API_KEY).",
                 code=ErrorCode.NOT_AVAILABLE,
             )  # fmt: skip
+
+    # ================================================================== lifecycle
+    async def _lifecycle(self, rs: RunState, ctx: ExecutionContext) -> list[VerificationResult]:
+        """Plan, execute and verify. Returns the passing final-verification results, or raises."""
+        self._require_llm()
+        assert self.d.planner is not None
         task = rs.task
         provider = self.d.gateway.provider if self.d.gateway else None
         if provider is not None:
@@ -198,7 +344,12 @@ class TaskRunner:
             {"plan": rs.plan.model_dump(mode="json")},
         )
         await rs.set_status(TaskStatus.EXECUTING)
+        return await self._execute_and_verify(rs, ctx)
 
+    async def _execute_and_verify(
+        self, rs: RunState, ctx: ExecutionContext
+    ) -> list[VerificationResult]:
+        assert rs.plan is not None
         # ---- Execute (with recovery + replanning) ----------------------------------
         await self._execute_plan(rs, ctx)
 

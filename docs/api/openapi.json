@@ -10,6 +10,17 @@
         "title": "Action",
         "type": "string"
       },
+      "ActionCertainty": {
+        "description": "What is known about an action that had started but had no recorded result.",
+        "enum": [
+          "safe_to_retry",
+          "confirmed_done",
+          "confirmed_not_done",
+          "uncertain"
+        ],
+        "title": "ActionCertainty",
+        "type": "string"
+      },
       "AgentActionRecord": {
         "properties": {
           "created_at": {
@@ -500,6 +511,80 @@
         "title": "DenyRequest",
         "type": "object"
       },
+      "DurableState": {
+        "description": "Runner state persisted with the task row (same transaction as the plan and its steps).",
+        "properties": {
+          "artifacts": {
+            "additionalProperties": true,
+            "title": "Artifacts",
+            "type": "object"
+          },
+          "denied": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Denied",
+            "type": "array"
+          },
+          "history": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "History",
+            "type": "array"
+          },
+          "replanned_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Replanned Codes",
+            "type": "array"
+          },
+          "replans_used": {
+            "default": 0,
+            "title": "Replans Used",
+            "type": "integer"
+          },
+          "resumes": {
+            "default": 0,
+            "title": "Resumes",
+            "type": "integer"
+          },
+          "status_before_pause": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TaskStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "step_answers": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Step Answers",
+            "type": "object"
+          },
+          "step_data": {
+            "additionalProperties": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Step Data",
+            "type": "object"
+          },
+          "version": {
+            "default": 1,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "title": "DurableState",
+        "type": "object"
+      },
       "ErrorCode": {
         "enum": [
           "invalid_input",
@@ -507,6 +592,7 @@
           "internal_error",
           "timeout",
           "cancelled",
+          "interrupted",
           "limit_exceeded",
           "SEARCH_UNAVAILABLE",
           "SEARCH_AUTOMATION_BLOCKED",
@@ -601,7 +687,9 @@
           "task_timed_out",
           "limit_reached",
           "kill_switch",
-          "checkpoint_saved"
+          "checkpoint_saved",
+          "task_interrupted",
+          "task_resuming"
         ],
         "title": "EventType",
         "type": "string"
@@ -707,6 +795,64 @@
         "title": "Health",
         "type": "object"
       },
+      "InFlightAction": {
+        "properties": {
+          "arguments": {
+            "additionalProperties": true,
+            "title": "Arguments",
+            "type": "object"
+          },
+          "artifacts": {
+            "additionalProperties": true,
+            "title": "Artifacts",
+            "type": "object"
+          },
+          "certainty": {
+            "$ref": "#/components/schemas/ActionCertainty"
+          },
+          "data": {
+            "additionalProperties": true,
+            "title": "Data",
+            "type": "object"
+          },
+          "detail": {
+            "default": "",
+            "title": "Detail",
+            "type": "string"
+          },
+          "fingerprint": {
+            "default": "",
+            "title": "Fingerprint",
+            "type": "string"
+          },
+          "step_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Step Id"
+          },
+          "tool": {
+            "title": "Tool",
+            "type": "string"
+          },
+          "tool_call_id": {
+            "title": "Tool Call Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tool_call_id",
+          "tool",
+          "certainty"
+        ],
+        "title": "InFlightAction",
+        "type": "object"
+      },
       "InjectionFinding": {
         "properties": {
           "excerpt": {
@@ -728,6 +874,94 @@
           "excerpt"
         ],
         "title": "InjectionFinding",
+        "type": "object"
+      },
+      "Interruption": {
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "awaiting_approval": {
+            "default": false,
+            "title": "Awaiting Approval",
+            "type": "boolean"
+          },
+          "completed_steps": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Completed Steps",
+            "type": "array"
+          },
+          "in_flight": {
+            "items": {
+              "$ref": "#/components/schemas/InFlightAction"
+            },
+            "title": "In Flight",
+            "type": "array"
+          },
+          "interrupted_step": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interrupted Step"
+          },
+          "needs_attention": {
+            "default": false,
+            "title": "Needs Attention",
+            "type": "boolean"
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Notes",
+            "type": "array"
+          },
+          "options": {
+            "items": {
+              "$ref": "#/components/schemas/RecoveryOption"
+            },
+            "title": "Options",
+            "type": "array"
+          },
+          "reason": {
+            "default": "The service stopped while this task was not finished",
+            "title": "Reason",
+            "type": "string"
+          },
+          "remaining_steps": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Remaining Steps",
+            "type": "array"
+          },
+          "resumable": {
+            "default": true,
+            "title": "Resumable",
+            "type": "boolean"
+          },
+          "status_at_interruption": {
+            "$ref": "#/components/schemas/TaskStatus"
+          },
+          "was_paused": {
+            "default": false,
+            "title": "Was Paused",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "status_at_interruption"
+        ],
+        "title": "Interruption",
         "type": "object"
       },
       "LogEntry": {
@@ -1164,6 +1398,56 @@
         "title": "Readiness",
         "type": "object"
       },
+      "RecoverRequest": {
+        "properties": {
+          "action": {
+            "description": "resume: continue from the recorded state. restart: end this task and run the same request again as a new task. cancel: end it; completed actions stay in place.",
+            "enum": [
+              "resume",
+              "restart",
+              "cancel"
+            ],
+            "title": "Action",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "title": "RecoverRequest",
+        "type": "object"
+      },
+      "RecoveryOption": {
+        "enum": [
+          "resume",
+          "restart",
+          "cancel",
+          "inspect"
+        ],
+        "title": "RecoveryOption",
+        "type": "string"
+      },
+      "RecoveryView": {
+        "description": "An interrupted task: what was done, what was in flight and how certain its outcome is.",
+        "properties": {
+          "interruption": {
+            "$ref": "#/components/schemas/Interruption"
+          },
+          "report": {
+            "$ref": "#/components/schemas/CompletionReport"
+          },
+          "task": {
+            "$ref": "#/components/schemas/TaskSummary"
+          }
+        },
+        "required": [
+          "task",
+          "interruption",
+          "report"
+        ],
+        "title": "RecoveryView",
+        "type": "object"
+      },
       "Requirement": {
         "properties": {
           "count": {
@@ -1455,6 +1739,11 @@
       },
       "Task": {
         "properties": {
+          "cancel_requested": {
+            "default": false,
+            "title": "Cancel Requested",
+            "type": "boolean"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -1493,6 +1782,16 @@
             ],
             "title": "Current Tool"
           },
+          "durable": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DurableState"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "finished_at": {
             "anyOf": [
               {
@@ -1509,9 +1808,30 @@
             "title": "Id",
             "type": "string"
           },
+          "idempotency_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Idempotency Key"
+          },
           "instruction": {
             "title": "Instruction",
             "type": "string"
+          },
+          "interruption": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Interruption"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "paused": {
             "default": false,
@@ -1538,6 +1858,17 @@
               }
             ],
             "title": "Request Id"
+          },
+          "restarted_from": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Restarted From"
           },
           "result": {
             "anyOf": [
@@ -1887,6 +2218,7 @@
           "RECOVERING",
           "VERIFYING",
           "PAUSED",
+          "INTERRUPTED",
           "COMPLETED",
           "FAILED",
           "CANCELLED",
@@ -1959,6 +2291,17 @@
             "title": "Paused",
             "type": "boolean"
           },
+          "restarted_from": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Restarted From"
+          },
           "started_at": {
             "anyOf": [
               {
@@ -2023,6 +2366,11 @@
             "additionalProperties": true,
             "title": "Args",
             "type": "object"
+          },
+          "fingerprint": {
+            "default": "",
+            "title": "Fingerprint",
+            "type": "string"
           },
           "id": {
             "title": "Id",
@@ -3391,7 +3739,7 @@
     },
     "/api/v1/tasks/{task_id}/checkpoints": {
       "get": {
-        "description": "Progress snapshots taken at step boundaries (what is done, what remains, what recovery did).\n\nInformational only: a task is not resumed from a checkpoint after a process restart.",
+        "description": "Progress snapshots taken at step boundaries (what is done, what remains, what recovery did).\n\nInformational only. A task interrupted by a restart is continued from its persisted plan, step\noutputs and tool-call records (see ``/recovery``), not from a checkpoint.",
         "operationId": "task_checkpoints_api_v1_tasks__task_id__checkpoints_get",
         "parameters": [
           {
@@ -3657,6 +4005,102 @@
           }
         },
         "summary": "Task Permission Decisions",
+        "tags": [
+          "tasks"
+        ]
+      }
+    },
+    "/api/v1/tasks/{task_id}/recover": {
+      "post": {
+        "description": "Decide what happens to an interrupted task. Nothing resumes without this explicit choice.",
+        "operationId": "recover_task_api_v1_tasks__task_id__recover_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "title": "Task Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecoverRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Recover Task",
+        "tags": [
+          "tasks"
+        ]
+      }
+    },
+    "/api/v1/tasks/{task_id}/recovery": {
+      "get": {
+        "description": "Inspect a task that was interrupted by a service restart. Read-only: nothing is executed.\n\nThe assessment is made again on every call, because the files it looks at may have changed.",
+        "operationId": "task_recovery_api_v1_tasks__task_id__recovery_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "title": "Task Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecoveryView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Task Recovery",
         "tags": [
           "tasks"
         ]

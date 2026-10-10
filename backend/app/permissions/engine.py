@@ -64,6 +64,24 @@ class PermissionEngine:
         *,
         grants: TaskGrants,
         tainted: bool = False,
+        uncertain: str | None = None,
+    ) -> Decision:
+        """``uncertain``: this exact action was in flight when the service stopped and its outcome
+        could not be determined. It is never allowed silently: not by policy, not by a trusted
+        operation, not by a task grant. The user decides, for this one call only."""
+        decision = self._decide(spec, assessment, grants=grants, tainted=tainted)
+        if uncertain and not spec.read_only and decision.action != Action.DENY:
+            return Decision(
+                Action.ASK,
+                f"Approval required: this action may already have happened ({uncertain})",
+                tainted_escalation=decision.tainted_escalation,
+                allowed_scopes=[ApprovalScope.ONCE],
+                via="restart_uncertain",
+            )
+        return decision
+
+    def _decide(
+        self, spec: ToolSpec, assessment: RiskAssessment, *, grants: TaskGrants, tainted: bool
     ) -> Decision:
         pol = self._policy
         if assessment.hard_deny:

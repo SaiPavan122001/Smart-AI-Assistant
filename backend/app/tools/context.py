@@ -18,6 +18,7 @@ from app.security.injection import InjectionGuard
 from app.security.paths import PathPolicy
 from app.tools.loop_guard import LoopGuard
 from app.tools.observed import Observed
+from app.tools.resume import ResumeLedger
 from app.utils.control import CancelToken, PauseGate
 
 if TYPE_CHECKING:
@@ -71,6 +72,8 @@ class ExecutionContext:
     # The user's explicit goal (restrictions are enforced by the router) and what the task has seen/written.
     goal: GoalSpec | None = None
     observed: Observed = field(default_factory=Observed)
+    # Set only while a task continues after an interruption (see app/tools/resume.py).
+    resume: ResumeLedger | None = None
 
     @property
     def settings(self) -> Settings:

@@ -8,6 +8,7 @@ export type TaskStatus =
   | "RECOVERING"
   | "VERIFYING"
   | "PAUSED"
+  | "INTERRUPTED"
   | "COMPLETED"
   | "FAILED"
   | "CANCELLED"
@@ -168,11 +169,49 @@ export interface TaskSummary {
   usage: UsageStats;
   summary: string | null;
   verified: boolean | null;
+  restarted_from?: string | null;
 }
 
 export interface Task extends Omit<TaskSummary, "summary" | "verified"> {
   plan: Plan | null;
   result: TaskResult | null;
+  interruption?: Interruption | null;
+}
+
+/** What is known about an action that had started when the service stopped. */
+export type ActionCertainty = "safe_to_retry" | "confirmed_done" | "confirmed_not_done" | "uncertain";
+export type RecoveryOption = "resume" | "restart" | "cancel" | "inspect";
+
+export interface InFlightAction {
+  tool_call_id: string;
+  tool: string;
+  step_id: string | null;
+  certainty: ActionCertainty;
+  detail: string;
+  arguments: Record<string, unknown>;
+}
+
+/** A task the service left unfinished. It waits for the user: resume, restart or cancel. */
+export interface Interruption {
+  at: string;
+  reason: string;
+  status_at_interruption: TaskStatus;
+  was_paused: boolean;
+  awaiting_approval: boolean;
+  interrupted_step: string | null;
+  in_flight: InFlightAction[];
+  completed_steps: string[];
+  remaining_steps: string[];
+  resumable: boolean;
+  needs_attention: boolean;
+  notes: string[];
+  options: RecoveryOption[];
+}
+
+export interface RecoveryView {
+  task: TaskSummary;
+  interruption: Interruption;
+  report: CompletionReport;
 }
 
 export type ApprovalScope = "once" | "task";
@@ -208,7 +247,8 @@ export type EventType =
   | "recovery_started" | "recovery_completed" | "verification_started" | "verification_completed"
   | "usage_updated" | "status_changed" | "pause_requested" | "pause_completed" | "resume_requested" | "resume_completed"
   | "task_paused" | "task_resumed" | "task_completed" | "task_failed"
-  | "task_cancelled" | "task_timed_out" | "limit_reached" | "kill_switch" | "checkpoint_saved";
+  | "task_cancelled" | "task_timed_out" | "limit_reached" | "kill_switch" | "checkpoint_saved"
+  | "task_interrupted" | "task_resuming";
 
 export interface Correlation {
   request_id?: string | null;

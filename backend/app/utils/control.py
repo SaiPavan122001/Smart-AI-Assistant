@@ -42,6 +42,9 @@ class CancelToken:
         self._event = asyncio.Event()
         self._reason = ""
         self._kill = kill_switch
+        # True when execution stops because the SERVICE is stopping, not because the user cancelled:
+        # the task is left resumable instead of being finished as CANCELLED.
+        self.suspended = False
 
     @property
     def cancelled(self) -> bool:
@@ -59,6 +62,12 @@ class CancelToken:
         if not self._event.is_set():
             self._reason = reason
             self._event.set()
+
+    def suspend(self, reason: str = "service shutdown") -> None:
+        """Stop the task's execution without ending the task (a user cancellation always wins)."""
+        if not self._event.is_set():
+            self.suspended = True
+            self.cancel(reason)
 
     def raise_if_cancelled(self) -> None:
         if self.cancelled:

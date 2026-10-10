@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import fnmatch
+import hashlib
 import os
 import shutil
 from datetime import UTC, datetime
@@ -15,8 +16,8 @@ from pydantic import BaseModel, Field
 from app.models.enums import Capability, RiskLevel
 from app.models.tool import RetryPolicy, RiskAssessment
 from app.security.paths import PathPolicy, ResolvedPath
-from app.tools.base import Tool, ToolOutput
-from app.tools.context import ExecutionContext
+from app.tools.base import Reconciliation, Tool, ToolOutput
+from app.tools.context import ExecutionContext, ToolServices
 from app.tools.schema import OutputModel
 from app.utils.errors import AgentError, ErrorCode, PathViolation
 
@@ -467,6 +468,60 @@ def _same_or_inside(child: Path, parent: Path) -> bool:
     return c == p or c.startswith(p.rstrip(os.sep) + os.sep)
 
 
+def _file_digest(p: Path) -> str:
+    h = hashlib.sha256()
+    with p.open("rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _reconcile_transfer(services: ToolServices, args: FsMoveInput, *, move: bool) -> Reconciliation:
+    """Was an interrupted move/copy carried out? Answered from the files only; "unknown" when unsure."""
+    if args.overwrite:
+        return Reconciliation(None, "overwrite was requested: what the destination held is unknown")
+    try:
+        cwd = services.settings.filesystem.workspace
+        src = services.path_policy.resolve(args.src, cwd=cwd).path
+        dst = services.path_policy.resolve(args.dst, cwd=cwd).path
+    except (AgentError, OSError):
+        return Reconciliation(None, "the paths can no longer be resolved")
+    # Same rule as _plan_transfer: an existing folder as destination means "into that folder".
+    inside = dst / src.name
+    target = inside if dst.is_dir() else dst
+    out = ToolOutput(
+        data={"src": str(src), "dst": str(target)},
+        artifacts={"src": str(src), "dst": str(target)},
+        summary=f"{'Moved' if move else 'Copied'} {src.name} to {target} (confirmed after a restart)",
+    )
+    if move:
+        if src.exists() and not target.exists():
+            return Reconciliation(
+                False, "the source is still in place and the destination is empty"
+            )
+        if not src.exists() and target.exists() and (target.is_file() or target == inside):
+            return Reconciliation(
+                True, "the source is gone and the item is at the destination", out
+            )
+        return Reconciliation(None, "source and destination do not show whether the move happened")
+    if not src.exists():
+        return Reconciliation(None, "the source no longer exists")
+    if not target.exists():
+        return Reconciliation(False, "nothing exists at the destination")
+    try:
+        same = (
+            src.is_file()
+            and target.is_file()
+            and src.stat().st_size == target.stat().st_size
+            and _file_digest(src) == _file_digest(target)
+        )
+    except OSError:
+        same = False
+    if same:
+        return Reconciliation(True, "the destination is an identical copy of the source", out)
+    return Reconciliation(None, "the destination exists but is not a verified copy of the source")
+
+
 class FsMove(Tool[FsMoveInput]):
     name = "fs_move"
     Output = FsTransferOutput
@@ -487,6 +542,9 @@ class FsMove(Tool[FsMoveInput]):
             risk=risk, action=f"Move {src} → {dst}", resource=f"{src} → {dst}", reasons=reasons,
             category="file_overwrite" if reasons else "file_move",
         )  # fmt: skip
+
+    def reconcile(self, args: FsMoveInput, services: ToolServices) -> Reconciliation:
+        return _reconcile_transfer(services, args, move=True)
 
     async def run(self, args: FsMoveInput, ctx: ExecutionContext) -> ToolOutput:
         src, dst, exists = _plan_transfer(ctx, args.src, args.dst, move=True)
@@ -531,6 +589,9 @@ class FsCopy(Tool[FsCopyInput]):
             risk=risk, action=f"Copy {src} → {dst}", resource=f"{src} → {dst}", reasons=reasons,
             category="file_overwrite" if reasons else "file_copy",
         )  # fmt: skip
+
+    def reconcile(self, args: FsCopyInput, services: ToolServices) -> Reconciliation:
+        return _reconcile_transfer(services, args, move=False)
 
     async def run(self, args: FsCopyInput, ctx: ExecutionContext) -> ToolOutput:
         src, dst, exists = _plan_transfer(ctx, args.src, args.dst, move=False)
@@ -585,6 +646,23 @@ class FsDelete(Tool[FsDeleteInput]):
         return RiskAssessment(
             risk=risk, action=f"Delete {'folder' if p.is_dir() else 'file'} {p}", resource=str(p),
             reasons=reasons, category=category, scoped_grant_allowed=risk < RiskLevel.CRITICAL,
+        )  # fmt: skip
+
+    def reconcile(self, args: FsDeleteInput, services: ToolServices) -> Reconciliation:
+        try:
+            cwd = services.settings.filesystem.workspace
+            p = services.path_policy.resolve(args.path, cwd=cwd).path
+        except (AgentError, OSError):
+            return Reconciliation(None, "the path can no longer be resolved")
+        if p.exists():
+            return Reconciliation(False, "the item is still in place")
+        return Reconciliation(
+            True,
+            "the item is no longer at its location",
+            ToolOutput(
+                data={"path": str(p), "recycled": True}, artifacts={"path": str(p)},
+                summary=f"{p.name} is no longer in place (confirmed after a restart)",
+            ),
         )  # fmt: skip
 
     async def run(self, args: FsDeleteInput, ctx: ExecutionContext) -> ToolOutput:

@@ -34,6 +34,9 @@ _ALLOWED: dict[TaskStatus, frozenset[TaskStatus]] = {
     ),
     # PAUSED is entered from any active phase and returns to the phase it interrupted.
     S.PAUSED: frozenset({*_ACTIVE, S.FAILED, S.CANCELLED, S.TIMED_OUT}),
+    # INTERRUPTED is left only by an explicit user choice: resume (through RECOVERING, where the
+    # last in-flight action is reconciled, or PLANNING when no plan existed yet) or cancel.
+    S.INTERRUPTED: frozenset({S.RECOVERING, S.PLANNING, S.CANCELLED, S.FAILED, S.TIMED_OUT}),
     S.COMPLETED: frozenset(),
     S.FAILED: frozenset(),
     S.CANCELLED: frozenset(),
@@ -48,6 +51,8 @@ class InvalidTransition(AgentError):
 def can_transition(current: TaskStatus, target: TaskStatus) -> bool:
     if target is S.PAUSED and current in _ACTIVE:
         return True
+    if target is S.INTERRUPTED and current not in TERMINAL_STATUSES:
+        return True  # the process stopped: any unfinished task can be found interrupted
     return current == target or target in _ALLOWED[current]
 
 

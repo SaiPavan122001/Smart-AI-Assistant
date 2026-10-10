@@ -1,6 +1,7 @@
 import type {
   ApprovalRequest,
   ExecutionEvent,
+  Interruption,
   Plan,
   TaskResult,
   TaskStatus,
@@ -39,6 +40,8 @@ export interface TaskView {
   killSwitch: boolean;
   /** Latest checkpoint: a progress snapshot, not a resume point. */
   progress: { completed: string[]; remaining: string[]; outstanding: string[] } | null;
+  /** Set while the task is INTERRUPTED: it waits for the user to resume, restart or cancel. */
+  interruption: Interruption | null;
 }
 
 export const emptyView = (taskId = ""): TaskView => ({
@@ -59,6 +62,7 @@ export const emptyView = (taskId = ""): TaskView => ({
   result: null,
   killSwitch: false,
   progress: null,
+  interruption: null,
 });
 
 const str = (v: unknown, d = ""): string => (typeof v === "string" ? v : d);
@@ -123,6 +127,23 @@ export function reduceEvent(state: TaskView, ev: ExecutionEvent): TaskView {
     }
     case "status_changed":
       s.status = str(d.status, s.status) as TaskStatus;
+      if (s.status !== "INTERRUPTED") s.interruption = null;
+      break;
+    // The service stopped while the task was unfinished. Nothing is running any more, whatever the
+    // timeline showed last, and nothing continues until the user decides.
+    case "task_interrupted":
+      s.status = "INTERRUPTED";
+      s.paused = false;
+      s.interruption = (d.interruption as Interruption | undefined) ?? null;
+      s.currentTool = null;
+      s.currentApplication = null;
+      s.pendingApprovals = []; // approvals of the stopped process are void; they are asked again on resume
+      s.timeline = s.timeline.map((t) => settle(t));
+      s.timeline = upsert(s.timeline, item(ev, `interrupted:${ev.seq}`, "warn", "Interrupted by a service restart", ev.message));
+      break;
+    case "task_resuming":
+      s.interruption = null;
+      s.timeline = upsert(s.timeline, item(ev, `resuming:${ev.seq}`, "info", "Continuing after the interruption", ev.message));
       break;
     case "planning_started":
       s.timeline = upsert(s.timeline, item(ev, `planning:${ev.seq}`, "running", ev.message || "Planning"));
@@ -259,6 +280,7 @@ export function reduceEvent(state: TaskView, ev: ExecutionEvent): TaskView {
       s.currentApplication = null;
       s.currentStepId = null;
       s.pendingApprovals = [];
+      s.interruption = null;
       // anything still "running" is not running anymore
       s.timeline = s.timeline.map((t) => settle(t));
       s.timeline = upsert(s.timeline, item(ev, `final`, icon, title, result?.summary ?? ev.message));
@@ -300,6 +322,7 @@ export const STATUS_LABEL: Record<TaskStatus, string> = {
   RECOVERING: "Recovering from a problem",
   VERIFYING: "Verifying the result",
   PAUSED: "Paused: nothing runs until you resume",
+  INTERRUPTED: "Interrupted: waiting for you to resume, restart or cancel",
   COMPLETED: "Completed",
   FAILED: "Failed",
   CANCELLED: "Cancelled",

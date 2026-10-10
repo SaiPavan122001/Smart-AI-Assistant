@@ -20,6 +20,7 @@ class ErrorCode(StrEnum):
     INTERNAL = "internal_error"
     TIMEOUT = "timeout"
     CANCELLED = "cancelled"
+    INTERRUPTED = "interrupted"  # the service stopped before the action's result was recorded
     LIMIT_EXCEEDED = "limit_exceeded"
     # search / browser-automation contract (provider-specific reasons live in ``details``)
     SEARCH_UNAVAILABLE = "SEARCH_UNAVAILABLE"  # no search provider could answer

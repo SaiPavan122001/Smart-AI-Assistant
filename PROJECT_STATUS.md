@@ -9,6 +9,45 @@ This is a single-user system: one person, one Windows machine, one task at a tim
 multi-tenant, distributed, horizontally scalable, highly available or internet-scale, and it is not claimed to be production-ready
 beyond that single-user scope. Checkpoint document: [docs/releases/v0.1.0-single-user-core.md](docs/releases/v0.1.0-single-user-core.md).
 
+## Production-reliability roadmap (branch `phase/production-reliability-roadmap`, not merged, not tagged)
+
+Started from the NEXT-A head `a300c2a`. Stages and their status: [PHASE_PLAN.md](PHASE_PLAN.md). The v0.1.0 record further down is
+unchanged and remains the release checkpoint. Nothing here is called production-ready.
+
+### NEXT-B — restart-safe task execution: implemented, deterministically validated
+
+| Capability | State |
+|---|---|
+| An unfinished task becomes `INTERRUPTED` at startup; nothing resumes by itself; resume / restart / cancel are explicit | deterministic tests, incl. a really killed process |
+| Write-ahead record of every side-effecting call; in-flight actions classified as safe to retry, confirmed done, confirmed not done or uncertain | deterministic tests |
+| Completed steps are kept; completed actions of the interrupted step are replayed, not executed again | deterministic tests (execution counts) |
+| An uncertain action needs a new, once-only approval, above policy, trusted operations and grants | deterministic tests |
+| Pending approvals and task-scoped grants are void after a restart; refusals, cancel and STOP are persisted and honoured | deterministic tests |
+| Migration `0002` (nullable columns only); rows from `0001` survive; tasks without stored step outputs can be restarted or cancelled, not resumed | SQLite and PostgreSQL |
+| `GET /tasks/{id}/recovery`, `POST /tasks/{id}/recover`; dashboard recovery panel | API tests, frontend unit tests |
+
+| Check | Result |
+|---|---|
+| Backend tests, every file except two NEXT-C drafts | **829 passed, 4 skipped** (NEXT-A: 762 / 2), run as nine sequential groups |
+| `ruff`, strict `mypy` (146 files), evals | clean · clean · 17/17, 46 LLM calls (unchanged), 0 violations |
+| Frontend `eslint`, `tsc`, Vitest, build, Playwright | clean · clean · 54 passed · OK · 8 passed |
+| All-in-one `scripts\check.ps1` | **not completed**: stopped by low memory at 17 % with no failure; replaced by the sequential groups |
+| Live model (`llm-check`, NA1–NA5, 18-scenario gate, live interruption) | **not run**: `403 Key limit exceeded (total limit)` |
+
+Commands, counts per group and what was left out: [docs/restart-recovery.md](docs/restart-recovery.md#validation-record-2026-10-10).
+
+Known limits specific to NEXT-B: no exactly-once guarantee for side effects; reconciliation covers file moves, copies, deletes and
+browser page loads only, every other in-flight side effect costs one approval after a restart; refusing that approval ends the task
+as `DENIED`; the browser session is not restored (pages are reopened, with a revised plan if needed); an interrupted adaptive step
+starts again; recovery has not been exercised with a live model.
+
+### NEXT-C — security hardening: not started
+
+No application code. An audit found issues to fix in that stage, the first of them a real leak: `fs_search` walks through a junction
+inside an allowed folder and returns the names of files outside it (the same junction-blind traversal exists in `fs_find` and
+`fs_list`). Two test files for the stage are drafted and uncommitted (`tests/security/test_path_confinement.py`,
+`tests/security/test_permission_hardening.py`); they are expected to fail until the fixes exist.
+
 ## NEXT-A (branch `phase/next-a-complex-single-user-workflows`, not merged, not tagged)
 
 **Status: READY FOR MORE SINGLE-USER TESTING** — implemented and deterministically tested; live validation incomplete.
@@ -133,7 +172,8 @@ Secret audit: no API key, token or private key in the working tree or in Git his
 3. Adaptive steps usually cost one model call per action with this model (dynamic page 8 calls, blocked-search fallback 14).
 4. Official-source verification proves the result is on the stated domain; the domain comes from the request, configuration or planner.
 5. Browser checks stop polling after 3 s of unchanged page state.
-6. A running or paused task does not survive a process restart (it is marked FAILED).
+6. At v0.1.0 a running or paused task did not survive a process restart (it was marked FAILED). On the roadmap branch it becomes
+   `INTERRUPTED` and can be resumed, restarted or cancelled (NEXT-B above).
 7. Desktop automation is Windows-only; Electron apps and other sparse UI Automation trees are untested; stale-reference recovery was
    exercised by deterministic tests, not by a live run.
 8. Brave and Tavily search providers are tested against mocks; DuckDuckGo is best effort.
