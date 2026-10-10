@@ -72,6 +72,20 @@ Branch `phase/production-reliability-roadmap`, started from `a300c2a` (NEXT-A). 
 | R7 | Durable runner state is one JSON column on the task row, written in the same transaction as the plan and steps; no new tables | the state changes together and must never be half-written; the single-user design has one writer |
 | R8 | The browser session is not restored. If remaining steps need an open page, the plan is revised with that fact | a Playwright context cannot be re-attached; pretending the page is still there produces clicks on nothing |
 
+### NEXT-C — security and permission hardening
+
+| # | Decision | Why |
+|---|---|---|
+| C1 | Every directory traversal uses `walk_confined` / `is_redirect` (`security/paths.py`): a symlink, junction or mount point is never entered and never listed. Cloud placeholder files (OneDrive) are reparse points too but are the file itself and stay visible | `os.path.islink` is False for a junction: `fs_search` walked a junction inside an allowed folder and returned the names of files outside it (and read their text when a content query was given). Found by probing, reproduced by a test |
+| C2 | Every `fs_search` match is resolved through `PathPolicy` before it is reported or its content is read | the search could be used as an oracle for the content of credential-looking files that `fs_read` refuses |
+| C3 | An approval is bound to the exact call (fingerprint, task, risk, category, resource) and the call is assessed again after the user approves; a changed action is refused with `approval_stale` | the user may decide minutes later; the approved call could by then overwrite a file that did not exist when it was shown |
+| C4 | A task grant carries the approved risk and does not cover a riskier call of the same tool and category | "approve for this task" must not grow |
+| C5 | Path text is compared in one normal form (`normalize_path_text` collapses repeated separators) | tool results are scanned as JSON, where backslashes are doubled: a Windows path named by injected text never matched the call that used it, so the provenance block did not fire |
+| C6 | Event messages, audit reasons and API error bodies are redacted, not only event data and tool results | a failing tool's error text reached the timeline and the `tool_calls` table in clear |
+| C7 | The API refuses a non-loopback address unless `SAA_SECURITY__ALLOW_REMOTE_BIND=true` and a configured token; the WebSocket token is accepted in the subprotocol only (`?token=` removed) | the API controls the computer; a URL token ends up in history and logs. The one existing test that used `?token=` now sends the subprotocol and a new test asserts the URL form is refused |
+| C8 | An approved command runs inside a Windows Job Object: the tree ends with the call and with the agent; memory and process limits are optional. The runner waits for the process to exit, not for its pipes to close | a child left running by a command kept the output pipe open, so a finished command was reported only when its timeout expired and the child outlived it. A job is lifetime and resource containment, not a sandbox |
+| C9 | Each tool is placed in one permission (`permissions/classes.py`), checked against the registry and the documentation by test; decisions stay per call (risk and category from `assess`) | a new tool cannot be added without being placed; "read" tools are proven read-only |
+
 ## Explicitly deferred (not decided against, not built)
 
 Multi-user and multi-tenancy, distributed or multi-machine workers, load balancing / autoscaling / Kubernetes, scheduled or recurring

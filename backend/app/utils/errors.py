@@ -32,6 +32,8 @@ class ErrorCode(StrEnum):
     POLICY_DENIED = "policy_denied"
     APPROVAL_DENIED = "approval_denied"
     APPROVAL_TIMEOUT = "approval_timeout"
+    # approved, but the action is no longer the one that was shown (the world changed while waiting)
+    APPROVAL_STALE = "approval_stale"
     KILL_SWITCH = "kill_switch_active"
     PATH_BLOCKED = "path_blocked"
     COMMAND_BLOCKED = "command_blocked"

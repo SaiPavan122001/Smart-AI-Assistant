@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 
 from app.models.enums import Capability, RiskLevel
 from app.models.tool import RetryPolicy, RiskAssessment
-from app.security.paths import PathPolicy, ResolvedPath
+from app.security.paths import PathPolicy, ResolvedPath, is_redirect, walk_confined
 from app.tools.base import Reconciliation, Tool, ToolOutput
 from app.tools.context import ExecutionContext, ToolServices
 from app.tools.schema import OutputModel
@@ -43,7 +43,7 @@ def _stat_entry(p: Path) -> dict[str, Any]:
 
 def _dir_stats(p: Path, cap: int = 5000) -> tuple[int, int]:
     files = size = 0
-    for root, _dirs, names in os.walk(p):
+    for root, _dirs, names in walk_confined(p):
         for n in names:
             files += 1
             try:
@@ -174,8 +174,8 @@ class FsList(Tool[FsListInput]):
                 if len(entries) >= limit:
                     truncated = True
                     return
-                if c.is_symlink():
-                    continue
+                if is_redirect(c):
+                    continue  # a symlink or junction: what it points to is not part of this folder
                 rel = str(c.relative_to(rp.path))
                 if args.pattern is None or fnmatch.fnmatch(c.name.lower(), args.pattern.lower()):
                     e = _stat_entry(c)
@@ -234,14 +234,20 @@ class FsSearch(Tool[FsSearchInput]):
         needle = args.content_query.lower() if args.content_query else None
         matches: list[dict[str, Any]] = []
         scanned = 0
-        for root, dirs, names in os.walk(rp.path):
-            dirs[:] = [d for d in dirs if not os.path.islink(os.path.join(root, d)) and not d.startswith(".")
-                       and d not in {"node_modules", "__pycache__", ".git", "venv", ".venv"}]  # fmt: skip
+        for root, _dirs, names in walk_confined(
+            rp.path, skip_hidden=True, skip_dirs={"node_modules", "__pycache__", ".git", "venv", ".venv"},
+        ):  # fmt: skip
             for n in names:
                 scanned += 1
                 if scanned > 50000:
                     break
                 p = Path(root, n)
+                try:
+                    # Every match passes the policy itself: credential-looking and protected files
+                    # are invisible, by name and by content.
+                    ctx.paths.resolve(str(p), cwd=ctx.cwd)
+                except PathViolation:
+                    continue
                 if exts and p.suffix.lower() not in exts:
                     continue
                 if args.name_pattern and not fnmatch.fnmatch(n.lower(), args.name_pattern.lower()):
@@ -599,7 +605,11 @@ class FsCopy(Tool[FsCopyInput]):
             raise AgentError(f"Destination already exists: {dst}", code=ErrorCode.ALREADY_EXISTS)
         dst.parent.mkdir(parents=True, exist_ok=True)
         if src.is_dir():
-            shutil.copytree(src, dst, dirs_exist_ok=args.overwrite, symlinks=True)
+            # A symlink or junction inside the folder is not copied: its target may be anywhere.
+            shutil.copytree(
+                src, dst, dirs_exist_ok=args.overwrite, symlinks=True,
+                ignore=lambda folder, names: [n for n in names if is_redirect(os.path.join(folder, n))],
+            )  # fmt: skip
         else:
             shutil.copy2(src, dst)
         return ToolOutput(

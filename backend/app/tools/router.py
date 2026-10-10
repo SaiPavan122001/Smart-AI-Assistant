@@ -263,6 +263,18 @@ class ToolRouter:
             denied = await self._ask(call, ctx, assessment, decision, started, orig_key)
             if denied is not None:
                 return denied
+            # ---- the approval is for the action that was SHOWN ---------------------------------
+            # The user may have taken minutes to decide. If the same call would now do something
+            # else (replace a file that did not exist, hit a protected path, carry a higher risk),
+            # the approval does not cover it: nothing runs and the action has to be asked again.
+            changed = await self._changed_since_approval(tool, args, ctx, assessment)
+            if changed:
+                return await self._finish_failed(
+                    call, ctx, ErrorCode.APPROVAL_STALE,
+                    f"Not performed: the action changed after it was approved ({changed}). "
+                    "The approval covered only what was shown.",
+                    started, assessment=assessment, decision="deny",
+                )  # fmt: skip
 
         # ---- last-moment checks (kill switch / pause / limits) -----------------------
         ctx.token.raise_if_cancelled()
@@ -438,6 +450,7 @@ class ToolRouter:
             task_id=ctx.task_id,
             step_id=ctx.step_id,
             tool_call_id=call.id,
+            fingerprint=orig_key,
             tool=call.tool,
             action=assessment.action,
             reason=call.rationale or "The agent did not provide a rationale for this action.",
@@ -469,7 +482,9 @@ class ToolRouter:
                 {"approval_id": req.id, "scope": (req.scope_granted or ApprovalScope.ONCE).value},
             )  # fmt: skip
             if req.scope_granted == ApprovalScope.TASK:
-                ctx.grants.add(call.tool, assessment.category, note=req.action)
+                ctx.grants.add(
+                    call.tool, assessment.category, note=req.action, risk=assessment.risk
+                )
             await ctx.set_status(TaskStatus.EXECUTING)
             return None
         await ctx.event(
@@ -493,6 +508,28 @@ class ToolRouter:
             "It was NOT performed. Do not retry it; choose a different approach or stop.",
             started, assessment=assessment, decision="deny",
         )  # fmt: skip
+
+    @staticmethod
+    async def _changed_since_approval(
+        tool: Tool, args: Any, ctx: ExecutionContext, approved: RiskAssessment,  # type: ignore[type-arg]
+    ) -> str | None:  # fmt: skip
+        """Assess the call again, now. Returns what differs from the approved assessment, or None."""
+        try:
+            maybe = tool.assess(args, ctx)
+            now = await maybe if inspect.isawaitable(maybe) else maybe
+        except AgentError as exc:
+            return f"it is no longer allowed: {exc.message[:160]}"
+        except Exception as exc:
+            return f"it can no longer be assessed ({type(exc).__name__})"
+        if now.hard_deny:
+            return f"it is no longer allowed: {now.hard_deny[:160]}"
+        if now.risk > approved.risk:
+            return f"its risk rose from {approved.risk.label} to {now.risk.label}"
+        if now.category != approved.category:
+            return f"it is now '{now.category}', it was approved as '{approved.category}'"
+        if now.resource != approved.resource:
+            return "it now affects a different resource"
+        return None
 
     # ------------------------------------------------------------------ execution
     async def _run_with_retries(
@@ -634,7 +671,7 @@ class ToolRouter:
                     result=result,
                     assessment=assessment,
                     decision=decision,
-                    decision_reason=reason,
+                    decision_reason=redact_text(reason),  # may quote a tool's error text
                 ),
             )
         except Exception:
@@ -652,7 +689,7 @@ class ToolRouter:
                     tool=call.tool,
                     risk=int(assessment.risk),
                     action=action.value,
-                    reason=reason,
+                    reason=redact_text(reason),
                     via=via,
                 )
             )

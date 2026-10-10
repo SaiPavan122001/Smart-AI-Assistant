@@ -9,14 +9,56 @@ from __future__ import annotations
 
 import os
 import re
+import stat
+from collections.abc import Collection, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
 from app.utils.errors import ErrorCode, PathViolation
 
+_PORT_DIGITS = "123456789\u00b9\u00b2\u00b3"  # Windows also reserves COM/LPT + superscript 1-3
 _RESERVED_NAMES = {
-    "con", "prn", "aux", "nul", *(f"com{i}" for i in range(1, 10)), *(f"lpt{i}" for i in range(1, 10)),
+    "con", "prn", "aux", "nul", "conin$", "conout$",
+    *(f"com{d}" for d in _PORT_DIGITS), *(f"lpt{d}" for d in _PORT_DIGITS),
 }  # fmt: skip
+_DRIVE_RELATIVE = re.compile(r"^[A-Za-z]:(?![\\/])")
+# Reparse tags with this bit redirect a name to another location (symlink, junction, mount point).
+# Cloud placeholders (e.g. OneDrive files) are reparse points too, but they are the file itself.
+_NAME_SURROGATE = 0x20000000
+
+
+def is_redirect(path: str | os.PathLike[str]) -> bool:
+    """Is this entry a symlink, junction or mount point, i.e. does its content live somewhere else?
+
+    ``os.path.islink`` is False for a junction, so a junction inside an allowed folder would be walked
+    like an ordinary directory and expose whatever it points to. Every directory traversal in the
+    system uses this check (through ``walk_confined``) and never descends into such an entry.
+    """
+    try:
+        st = os.lstat(path)
+    except OSError:
+        return False
+    if stat.S_ISLNK(st.st_mode):
+        return True
+    if getattr(st, "st_file_attributes", 0) & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0):
+        return bool(getattr(st, "st_reparse_tag", 0) & _NAME_SURROGATE)
+    return False
+
+
+def walk_confined(
+    top: str | os.PathLike[str], *, skip_dirs: Collection[str] = (), skip_hidden: bool = False
+) -> Iterator[tuple[str, list[str], list[str]]]:
+    """``os.walk`` that stays inside ``top``: redirecting entries are neither entered nor reported."""
+    for root, dirs, names in os.walk(top):
+        dirs[:] = sorted(
+            d for d in dirs
+            if d not in skip_dirs
+            and not (skip_hidden and d.startswith("."))
+            and not is_redirect(os.path.join(root, d))
+        )  # fmt: skip
+        yield root, dirs, sorted(n for n in names if not is_redirect(os.path.join(root, n)))
+
+
 _SENSITIVE_NAME_PATTERNS = (
     re.compile(r"^\.env(\..*)?$", re.I),
     re.compile(r"^id_(rsa|dsa|ecdsa|ed25519)(\.pub)?$", re.I),
@@ -146,6 +188,9 @@ class PathPolicy:
         low = text.replace("\\", "/")
         if low.startswith(("//", "/??/")) or text.startswith(("\\\\", "\\\\?\\", "\\\\.\\")):
             raise PathViolation("UNC / device paths are not allowed")
+        if os.name == "nt" and _DRIVE_RELATIVE.match(text):
+            # "C:name" is relative to the current directory of drive C, not to the workspace.
+            raise PathViolation("Drive-relative paths (like 'C:name') are not allowed")
         if text.startswith("@"):
             name, _, rest = text[1:].replace("\\", "/").partition("/")
             base = self.aliases.get(name.lower())

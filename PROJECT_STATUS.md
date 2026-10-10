@@ -41,12 +41,44 @@ browser page loads only, every other in-flight side effect costs one approval af
 as `DENIED`; the browser session is not restored (pages are reopened, with a revised plan if needed); an interrupted adaptive step
 starts again; recovery has not been exercised with a live model.
 
-### NEXT-C — security hardening: not started
+### NEXT-C — security and permission hardening: implemented, deterministically validated
 
-No application code. An audit found issues to fix in that stage, the first of them a real leak: `fs_search` walks through a junction
-inside an allowed folder and returns the names of files outside it (the same junction-blind traversal exists in `fs_find` and
-`fs_list`). Two test files for the stage are drafted and uncommitted (`tests/security/test_path_confinement.py`,
-`tests/security/test_permission_hardening.py`); they are expected to fail until the fixes exist.
+Fixed, each with a negative test that fails without the fix (12 of 12 mutations caught):
+
+| Finding | Fix |
+|---|---|
+| `fs_search` walked a junction inside an allowed folder and returned the names of files outside it; `fs_find`, `fs_list`, folder copy and two internal walks had the same junction-blind traversal | one confined walk (`security/paths.py`); symlinks, junctions and mount points are never entered or listed |
+| A content search could probe credential-looking files that `fs_read` refuses | every match is checked against the path policy before it is read or reported |
+| A Windows path named by injected text was not matched to the tool call using it (JSON doubles backslashes), so the provenance block did not fire | one normal form for path text |
+| A failing tool's error text reached the timeline and the `tool_calls` table unredacted; API error bodies echoed input | event messages, audit reasons and error bodies are redacted |
+| A command that left a child running was reported only when its timeout expired, and the child outlived it | Windows Job Object around the command; the runner waits for process exit |
+| An approved call ran even if it would by then do something else (overwrite a file that had appeared) | approval bound to the exact call and re-assessed after the wait (`approval_stale`) |
+| `serve --host 0.0.0.0` was accepted; the WebSocket accepted the token in the URL | network bind refused unless explicitly enabled with a chosen token; subprotocol token only |
+| Drive-relative paths (`C:name`) and `CONIN$` / `CONOUT$` / superscript COM-LPT names were accepted | refused |
+
+Also added: one permission per tool, checked against the registry and the docs; a task grant limited to the approved risk; injection
+tests per content source (document, PDF, several documents, file name, search result, command output, failed command output,
+screenshot text, tool response); STOP ends planning, recovery and re-planning; migration `0003` (approval fingerprint, nullable).
+
+| Check (2026-10-10, run one group at a time, each exit 0) | Result |
+|---|---|
+| `ruff format --check`, `ruff check`, strict `mypy` (148 files) | clean (221 files) · clean · 0 issues |
+| `pytest tests/security` | 239 passed (NEXT-B: 113) |
+| `pytest tests/unit` | 532 passed, 1 skipped |
+| `pytest tests/e2e` | 107 passed |
+| Storage and migrations (SQLite, PostgreSQL, killed process, `0001 → 0003` with existing rows) | 33 passed, 2 skipped |
+| API (`test_api.py`, `test_api_recovery.py`, `test_api_exposure.py`) | 27 passed |
+| `test_uia_windows.py` · `test_startup.py` · `test_browser.py` | 3 passed, 1 skipped · 5 passed · 18 passed |
+| **Backend total** | **964 passed, 4 skipped, 0 failed**, every test file |
+| `python -m evals.run` | 17/17, 46 LLM calls (unchanged), 0 violations, thresholds met |
+| Frontend `eslint`, `tsc`, Vitest, build | clean · clean · 54 passed · OK |
+| Playwright UI E2E | 8 passed on the second run. The first run had 7 passed and 1 failed: the login page did not render within 60 s in one test, before any application step. Not reproduced; recorded as a flaky page load on this 8 GB machine, not investigated further |
+| All-in-one `scripts\check.ps1` | not run (memory); the groups above are its parts |
+| Live model | not run: `llm-check` last returned `403 Key limit exceeded (total limit)` |
+
+Residual risks are numbered in [SECURITY.md](SECURITY.md#known-limitations-please-read): check-then-use window on paths, hard links
+not detected, a "for this task" approval is broad, the Job Object is not a sandbox, the emergency stop is not persisted across a
+restart, heuristic injection detection. No penetration test and no external review has been done.
 
 ## NEXT-A (branch `phase/next-a-complex-single-user-workflows`, not merged, not tagged)
 

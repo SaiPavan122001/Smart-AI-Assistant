@@ -144,6 +144,9 @@ class TerminalSettings(BaseModel):
     max_timeout_s: float = 600.0
     max_output_bytes: int = 64 * 1024
     allow_shell_interpreters: bool = False
+    # Hard limits for one approved command and everything it starts (Windows Job Object). 0 = no limit.
+    max_memory_mb: int = Field(default=0, ge=0)
+    max_processes: int = Field(default=0, ge=0)
     extra_allowed_programs: list[str] = Field(default_factory=list)
 
 
@@ -201,6 +204,9 @@ class SecuritySettings(BaseModel):
     )
     # Block (rather than only flag) tool results containing high-severity injection patterns.
     block_on_injection: bool = False
+    # The API can control this computer. It binds to loopback only unless this is set, and then
+    # only with a configured API token. There is no TLS: put a TLS reverse proxy in front.
+    allow_remote_bind: bool = False
 
 
 class Settings(BaseSettings):

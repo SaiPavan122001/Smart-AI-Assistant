@@ -21,6 +21,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.models.enums import Capability, RiskLevel
 from app.models.tool import RiskAssessment
+from app.security.paths import walk_confined
 from app.tools.base import Tool, ToolOutput
 from app.tools.context import ExecutionContext
 from app.tools.filesystem.tools import _TEXT_EXT, _read_pdf, _resolve, _stat_entry
@@ -208,12 +209,8 @@ class FsFind(Tool[FsFindInput]):
         scanned = opened = unreadable = 0
         truncated = False
         found: list[dict[str, Any]] = []
-        for root, dirs, names in os.walk(rp.path):
-            dirs[:] = sorted(
-                d for d in dirs
-                if not os.path.islink(os.path.join(root, d)) and not d.startswith(".") and d not in _SKIP_DIRS
-            )  # fmt: skip
-            for n in sorted(names):
+        for root, _dirs, names in walk_confined(rp.path, skip_dirs=_SKIP_DIRS, skip_hidden=True):
+            for n in names:
                 ctx.token.raise_if_cancelled()
                 scanned += 1
                 if scanned > MAX_SCANNED:
@@ -229,7 +226,7 @@ class FsFind(Tool[FsFindInput]):
                     st = p.stat()
                 except OSError:
                     continue
-                if p.is_symlink() or not _passes_metadata(st, after, before, args):
+                if not _passes_metadata(st, after, before, args):
                     continue
                 try:
                     ctx.paths.resolve(

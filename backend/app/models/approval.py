@@ -16,6 +16,9 @@ class ApprovalRequest(BaseModel):
     task_id: str
     step_id: str | None = None
     tool_call_id: str
+    # Hash of the tool and its exact, original arguments: what this approval is for and nothing else.
+    # (``arguments`` below are redacted for display and cannot identify the call.)
+    fingerprint: str = ""
     tool: str
     action: str  # what the agent wants to do
     reason: str  # why it wants to do it

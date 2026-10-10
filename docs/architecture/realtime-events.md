@@ -4,7 +4,7 @@
 
 * `GET ws://…/api/v1/ws/tasks/{task_id}?after_seq=N` — replay persisted events with `seq > N`, then live events.
 * `GET ws://…/api/v1/ws/events` — live events for all tasks (no replay).
-* Auth: subprotocols `["saa.v1", "bearer.<token>"]` (the token never appears in the URL; `?token=` exists for non-browser tooling).
+* Auth: subprotocols `["saa.v1", "bearer.<token>"]` (the token never appears in the URL; `?token=` is not accepted, non-browser clients send the same subprotocol header).
   The server verifies `Origin` against `SAA_SECURITY__ALLOWED_ORIGINS` and closes with `1008` on a bad token/origin (clients must not retry).
 * Server → client only; the client may send `ping` and receives `pong`. A subscriber that cannot keep up is closed (`1013`) and reconnects with `after_seq`.
 * The subscription is registered *before* the replay query, and live events with `seq <= last replayed` are dropped, so reconnects have no gaps and no duplicates.

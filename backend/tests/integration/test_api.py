@@ -370,7 +370,8 @@ def test_websocket_replays_and_streams_events(api: Api) -> None:
         e["seq"] for e in seen
     )
     with api.c.websocket_connect(
-        f"/api/v1/ws/tasks/{t['id']}?after_seq={seen[-2]['seq']}&token={TOKEN}"
+        f"/api/v1/ws/tasks/{t['id']}?after_seq={seen[-2]['seq']}",
+        subprotocols=["saa.v1", f"bearer.{TOKEN}"],
     ) as ws:
         assert (
             ws.receive_json()["seq"] == seen[-1]["seq"]

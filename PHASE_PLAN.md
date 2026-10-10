@@ -67,7 +67,7 @@ separately after its tests pass. The phase letters after NEXT-A were renumbered 
 | Stage | Scope | Status | Where |
 |---|---|---|---|
 | NEXT-B | Restart-safe task execution and durable recovery | ✅ deterministic (829 backend tests, evals, frontend, Playwright, run as sequential groups); no live-model run | [docs/restart-recovery.md](docs/restart-recovery.md) |
-| NEXT-C | Security and permission hardening | ⏳ audit done, two test files drafted, no application code | |
+| NEXT-C | Security and permission hardening | ✅ deterministic (964 backend tests, evals, frontend, Playwright, run as sequential groups); residual risks in SECURITY.md | [SECURITY.md](SECURITY.md), decisions C1–C9 |
 | NEXT-D | Transactional file operations, rollback, partial-failure handling | ⏳ | |
 | NEXT-E | Reliable Windows application automation, support matrix | ⏳ | |
 | NEXT-F | Evidence-based evaluation; live validation of NA1–NA5 and the 18-scenario gate | ⏳ deterministic part · ⛔ live part (model key limit) | |
@@ -87,10 +87,22 @@ work is not repeated; an action whose outcome is unknown is never repeated witho
 * Open: no live-model interruption test (blocked with NEXT-F); reconciliation covers file moves/copies/deletes and page loads only;
   the all-in-one check script has not completed in one run on this machine (memory), its parts were run one at a time.
 
+### NEXT-C — Security and permission hardening ✅
+
+Checkpoint: the audit's findings are fixed, each with a negative test, and the remaining risks are written down.
+
+* Fixed leaks: directory walks followed junctions out of the allowed folders (`fs_search` returned outside file names); a content
+  search could probe credential-looking files; Windows paths named by injected text were not matched to the call using them; a failing
+  tool's error text was stored and shown unredacted; a command's left-behind child kept the call waiting and outlived it.
+* Hardened: approvals bound to the exact action and re-checked after the wait; grants limited to the approved risk; drive-relative
+  paths and more reserved device names refused; network bind refused unless explicitly enabled; no token in the WebSocket URL; Job
+  Object around approved commands; one permission per tool, checked against the registry.
+* Tests: injection per content source (document, PDF, several documents, file name, search result, command output, failed command
+  output, screenshot text, tool response); STOP ends planning, recovery and re-planning; migration `0003`.
+* Open: see the numbered limitations in [SECURITY.md](SECURITY.md) (check-then-use window, hard links, broad task grants, no sandbox).
+
 ### Stages not started
 
-NEXT-C: one permission path for every execution route, approvals bound to the exact action, Windows path confinement (junctions,
-reparse points), terminal execution controls, STOP completeness, redaction, local API exposure, injection tests per content type.
 NEXT-D: action journal, undo with precondition checks, staging and verification, rollback that is idempotent and resumable.
 NEXT-E: tested application-support matrix, focus / stale-window / unexpected-dialog detection, postcondition verification.
 NEXT-F: failure scenarios (restart, unavailable application, network, invalid model output, timeout, ambiguity, injection, forbidden

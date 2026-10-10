@@ -376,6 +376,7 @@ class SqlRepository:
                 )
                 s.add(row)
             row.step_key = req.step_id
+            row.fingerprint = req.fingerprint or None
             row.action, row.reason, row.resource = req.action, req.reason, req.resource
             row.risk = int(req.risk)
             row.risk_explanation = req.risk_explanation
@@ -394,6 +395,7 @@ class SqlRepository:
     def _approval(r: m.ApprovalRow) -> ApprovalRequest:
         return ApprovalRequest(
             id=r.id, task_id=r.task_id, step_id=r.step_key, tool_call_id=r.tool_call_id, tool=r.tool, action=r.action,
+            fingerprint=r.fingerprint or "",
             reason=r.reason, resource=r.resource, risk=RiskLevel(r.risk), risk_explanation=list(r.risk_explanation or []),
             arguments=r.arguments or {}, allowed_scopes=[ApprovalScope(x) for x in (r.allowed_scopes or [])],
             tainted=r.tainted, category=r.category, status=ApprovalStatus(r.status),

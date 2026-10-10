@@ -13,8 +13,9 @@ Read [docs/next-a/implementation.md](docs/next-a/implementation.md) and [docs/ne
 first. Live validation of NA1–NA5 is **incomplete** (the LLM key's spending limit was reached); resume with `NA1`, see PHASE_PLAN.md.
 
 **The production-reliability roadmap (NEXT-B … NEXT-H) continues on branch `phase/production-reliability-roadmap`** (from the NEXT-A
-head; not merged, not tagged). NEXT-B (restart-safe execution) is done: read [docs/restart-recovery.md](docs/restart-recovery.md).
-Next is NEXT-C (security hardening); stages and status are in PHASE_PLAN.md. On this 8 GB machine run the checks one group at a
+head; not merged, not tagged). NEXT-B (restart-safe execution) is done: read [docs/restart-recovery.md](docs/restart-recovery.md). NEXT-C (security hardening) is
+done: read the limitations in [SECURITY.md](SECURITY.md) and decisions C1–C9. Next is NEXT-D (transactional file operations);
+stages and status are in PHASE_PLAN.md. On this 8 GB machine run the checks one group at a
 time (the list is in the validation record of that document): the all-in-one `scripts\check.ps1` ran out of memory.
 
 **DO NOT redesign or redo the completed current phase.** The decisions it rests on are indexed in [DECISIONS.md](DECISIONS.md);
@@ -80,6 +81,10 @@ python -m validation.tool_probe vscode                                   # read-
   auto-resume, never blindly retry an in-flight side effect, never claim exactly-once execution.
 * A side-effecting tool call is recorded before it runs (write-ahead). If that record cannot be written, the action does not run.
 * Task-scoped approval grants are never restored after a restart; refusals and cancel requests always are.
+* Walk directories only with `walk_confined` (`app/security/paths.py`); never `os.walk`/`iterdir` over user folders directly, and
+  never treat `os.path.islink` as enough (it is False for a junction). A new tool must be placed in `app/permissions/classes.py`.
+* An approval covers the exact call that was shown; the router re-assesses after the wait. Do not cache or reuse approvals.
+* Everything that leaves the process (events, audit rows, API errors, logs) is redacted, messages included.
 * Every bug fix comes with a regression test. Keep `python -m evals.run` thresholds green.
 * Generated docs and `.env.example` must stay in sync with the code (tests enforce both).
 

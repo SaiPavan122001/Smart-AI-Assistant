@@ -113,6 +113,8 @@ async def _execute(
         env=build_environment(),
         timeout_s=timeout,
         max_output_bytes=cfg.max_output_bytes,
+        max_memory_mb=cfg.max_memory_mb,
+        max_processes=cfg.max_processes,
     )
     data: dict[str, Any] = {
         "command": analysis.command,

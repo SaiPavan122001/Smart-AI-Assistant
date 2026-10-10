@@ -181,6 +181,11 @@
             ],
             "title": "Expires At"
           },
+          "fingerprint": {
+            "default": "",
+            "title": "Fingerprint",
+            "type": "string"
+          },
           "id": {
             "title": "Id",
             "type": "string"
@@ -600,6 +605,7 @@
           "policy_denied",
           "approval_denied",
           "approval_timeout",
+          "approval_stale",
           "kill_switch_active",
           "path_blocked",
           "command_blocked",

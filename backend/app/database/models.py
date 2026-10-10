@@ -192,6 +192,7 @@ class ApprovalRow(Base):
     task_id: Mapped[str] = mapped_column(ForeignKey("tasks.id", ondelete="CASCADE"), index=True)
     step_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
     tool_call_id: Mapped[str] = mapped_column(String(64))
+    fingerprint: Mapped[str | None] = mapped_column(String(160), nullable=True)  # migration 0003
     tool: Mapped[str] = mapped_column(String(100))
     action: Mapped[str] = mapped_column(Text)
     reason: Mapped[str] = mapped_column(Text)

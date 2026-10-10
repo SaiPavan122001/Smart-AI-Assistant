@@ -8,7 +8,6 @@ vocabulary comes from text a tool returned. A requirement that cannot be decided
 
 from __future__ import annotations
 
-import os
 import re
 import time
 from datetime import datetime
@@ -23,6 +22,7 @@ from app.models.goal import (
     RequirementStatus,
 )
 from app.models.verification import VerificationResult
+from app.security.paths import walk_confined
 from app.tools.context import ExecutionContext
 from app.tools.observed import urls_in
 from app.utils.errors import PathViolation
@@ -90,10 +90,9 @@ def _find_by_name(ctx: ExecutionContext, name: str, since: float, search: bool) 
         return None
     scanned = 0
     for root in ctx.paths.writable_roots:
-        for cur, dirs, files in os.walk(root):
-            dirs[:] = [
-                d for d in dirs if not d.startswith(".") and d not in {"node_modules", ".venv"}
-            ]
+        for cur, _dirs, files in walk_confined(
+            root, skip_dirs={"node_modules", ".venv"}, skip_hidden=True
+        ):
             for f in files:
                 scanned += 1
                 if scanned > 30_000:

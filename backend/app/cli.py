@@ -234,6 +234,10 @@ def serve(host: str | None, port: int | None) -> int:
     if settings.env == "prod" and not settings.security.api_token:
         print("error: SAA_SECURITY__API_TOKEN must be set when SAA_ENV=prod", file=sys.stderr)
         return 2
+    exposure = bind_problem(host or settings.host, settings)
+    if exposure:
+        print(f"error: {exposure}", file=sys.stderr)
+        return 2
     problem = asyncio.run(_preflight(settings))
     if problem:
         print(f"error: {problem}", file=sys.stderr)
@@ -244,6 +248,36 @@ def serve(host: str | None, port: int | None) -> int:
         ws_ping_interval=20, ws_ping_timeout=20,
     )  # fmt: skip
     return 0
+
+
+def is_loopback(host: str) -> bool:
+    import ipaddress
+
+    name = host.strip().strip("[]").lower()
+    if name == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(name).is_loopback
+    except ValueError:
+        return False  # any other name could resolve to a network interface
+
+
+def bind_problem(host: str, settings: Settings) -> str | None:
+    """Why the API must not listen on ``host``, or None. Loopback is always fine."""
+    if is_loopback(host):
+        return None
+    if not settings.security.allow_remote_bind:
+        return (
+            f"refusing to listen on '{host}': this API can control the computer and is meant for "
+            "this machine only. Use 127.0.0.1, or set SAA_SECURITY__ALLOW_REMOTE_BIND=true if you "
+            "really want it reachable from the network (then put a TLS reverse proxy in front)."
+        )
+    if not settings.security.api_token:
+        return (
+            f"refusing to listen on '{host}' without SAA_SECURITY__API_TOKEN: a network-reachable "
+            "API needs a token you chose, not a generated one."
+        )
+    return None
 
 
 def migrate() -> int:

@@ -11,6 +11,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.observability.logging import get_logger
 from app.utils.errors import AgentError, ErrorCode
+from app.utils.redact import redact, redact_text
 
 log = get_logger("api")
 
@@ -31,9 +32,9 @@ def _body(
     return {
         "error": {
             "code": code,
-            "message": message,
+            "message": redact_text(message),
             "request_id": getattr(request.state, "request_id", None),
-            "details": details or {},
+            "details": redact(details or {}),
         }
     }
 
