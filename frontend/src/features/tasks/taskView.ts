@@ -37,6 +37,8 @@ export interface TaskView {
   usage: UsageStats | null;
   result: TaskResult | null;
   killSwitch: boolean;
+  /** Latest checkpoint: a progress snapshot, not a resume point. */
+  progress: { completed: string[]; remaining: string[]; outstanding: string[] } | null;
 }
 
 export const emptyView = (taskId = ""): TaskView => ({
@@ -56,6 +58,7 @@ export const emptyView = (taskId = ""): TaskView => ({
   usage: null,
   result: null,
   killSwitch: false,
+  progress: null,
 });
 
 const str = (v: unknown, d = ""): string => (typeof v === "string" ? v : d);
@@ -196,7 +199,17 @@ export function reduceEvent(state: TaskView, ev: ExecutionEvent): TaskView {
       break;
     case "verification_completed": {
       const ok = d.passed === true;
-      s.timeline = place(s.timeline, item(ev, `verify:${stepId ?? "task"}`, ok ? "done" : "error", ok ? "Verified" : "Verification failed", ev.message));
+      // The user's own requirements are a separate line: a passing plan check must not hide an unmet requirement.
+      const goal = d.scope === "goal";
+      const title = goal ? (ok ? "Requirements met" : "Requirements not met") : ok ? "Verified" : "Verification failed";
+      s.timeline = place(s.timeline, item(ev, goal ? "verify:goal" : `verify:${stepId ?? "task"}`, ok ? "done" : "error", title, ev.message));
+      break;
+    }
+    case "checkpoint_saved": {
+      const list = (v: unknown): string[] => (Array.isArray(v) ? v.map(String) : []);
+      s.progress = { completed: list(d.completed), remaining: list(d.remaining), outstanding: list(d.outstanding_requirements) };
+      // one line, updated in place: a checkpoint per step must not flood the timeline
+      s.timeline = upsert(s.timeline, item(ev, "checkpoint", "info", "Progress checkpoint", ev.message));
       break;
     }
     case "usage_updated":
@@ -232,8 +245,11 @@ export function reduceEvent(state: TaskView, ev: ExecutionEvent): TaskView {
     case "task_failed":
     case "task_cancelled":
     case "task_timed_out": {
-      const [icon, title] = FINAL_TITLE[ev.type]!;
+      const [icon0, title0] = FINAL_TITLE[ev.type]!;
       const result = d.result as TaskResult | undefined;
+      const partial = ev.type === "task_failed" && result?.outcome === "PARTIAL";
+      const icon: TimelineIcon = partial ? "warn" : icon0;
+      const title = partial ? "Task only partly completed" : title0;
       if (result) {
         s.result = result;
         s.usage = result.usage;

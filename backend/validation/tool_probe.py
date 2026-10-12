@@ -127,6 +127,49 @@ async def main(which: str) -> None:
                 r = await call("desktop_find_element", window_title="Calculator", query=q)
                 for m in (r.data.get("matches") or [])[:3]:
                     print("     ", m)
+        elif which == "vscode":
+            # NEXT-A: what does the REAL VS Code expose through UI Automation? Read-only: an already-open
+            # window is inspected as it is (nothing is launched into the user's session); only when none is
+            # open, a disposable folder is opened. Only structure is printed (roles, counts, control names).
+            wins = await call("desktop_windows")
+            code_wins = [
+                w
+                for w in (wins.data.get("windows") or [])
+                if str(w.get("process", "")).lower() == "code.exe"
+            ]
+            print(f"   VS Code windows already open: {len(code_wins)}")
+            if not code_wins:
+                proj = root / "w" / "vscode-probe"
+                proj.mkdir(parents=True, exist_ok=True)
+                (proj / "hello.py").write_text("print('hello from the probe')\n")
+                await call("desktop_launch", app="vscode", args=[str(proj)])
+                await asyncio.sleep(8.0)  # Electron starts slowly
+            r = await call("desktop_read", window_process="Code.exe", mode="tree", max_elements=150)
+            tree = r.data.get("tree") or []
+            print(
+                f"   UIA exposure quality: {r.data.get('quality')}  controls read: {len(tree)}  truncated: {r.data.get('truncated')}"
+            )
+            roles: dict[str, int] = {}
+            for line in tree:
+                role = line.strip().split(" ", 1)[0].strip("[]():")
+                roles[role] = roles.get(role, 0) + 1
+            print("   roles:", dict(sorted(roles.items(), key=lambda kv: -kv[1])[:12]))
+            for line in tree[:25]:
+                print("   ", line[:70])
+            for q in (
+                "Explorer",
+                "Editor",
+                "Terminal",
+                "Search",
+                "Run and Debug",
+                "Source Control",
+            ):
+                fr = await call("desktop_find_element", window_process="Code.exe", query=q)
+                top = (fr.data.get("matches") or [])[:1]
+                print(
+                    f"   find {q!r}: {len(fr.data.get('matches') or [])} match(es)",
+                    [str(m)[:110] for m in top],
+                )
         elif which == "chrome":
             await call("browser_open", url="https://www.google.com")
             await call("browser_read", mode="elements")

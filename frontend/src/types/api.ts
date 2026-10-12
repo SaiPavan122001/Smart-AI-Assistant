@@ -60,7 +60,7 @@ export interface UsageStats {
 }
 
 /** Why a task ended (finer than TaskStatus: several map to FAILED). */
-export type TaskOutcome = "COMPLETED" | "FAILED" | "CANCELLED" | "TIMED_OUT" | "DENIED" | "LOOP_DETECTED" | "PLAN_INVALID";
+export type TaskOutcome = "COMPLETED" | "FAILED" | "CANCELLED" | "TIMED_OUT" | "DENIED" | "LOOP_DETECTED" | "PLAN_INVALID" | "PARTIAL";
 export type VerificationStatus = "VERIFIED" | "JUDGED" | "INCOMPLETE" | "FAILED" | "NOT_RUN";
 /** How to read `answer`: only ANSWERED is a success answer. WITHHELD text describes a failure. */
 export type AnswerStatus = "ANSWERED" | "NOT_REQUESTED" | "answer_unavailable" | "WITHHELD";
@@ -108,6 +108,35 @@ export interface Plan {
   success_criteria: VerificationSpec[];
 }
 
+export type RequirementStatus = "met" | "unmet" | "unverified";
+
+export interface RequirementResult {
+  id: string;
+  kind: string;
+  text: string;
+  status: RequirementStatus;
+  evidence: string;
+}
+
+export interface StepReport {
+  id: string;
+  title: string;
+  status: string;
+  summary: string;
+}
+
+/** What a finished task actually did: steps done / failed / not run, and the user's requirements. */
+export interface CompletionReport {
+  completed: StepReport[];
+  failed: StepReport[];
+  interrupted?: StepReport[];
+  not_run: StepReport[];
+  requirements: RequirementResult[];
+  effects: string[];
+  replans: number;
+  recoveries: number;
+}
+
 export interface TaskResult {
   status: TaskStatus;
   summary: string;
@@ -119,6 +148,7 @@ export interface TaskResult {
   verification_status?: VerificationStatus;
   answer_status?: AnswerStatus;
   answer: string | null;
+  report?: CompletionReport | null;
   duration_s: number;
   usage: UsageStats;
 }
@@ -178,7 +208,7 @@ export type EventType =
   | "recovery_started" | "recovery_completed" | "verification_started" | "verification_completed"
   | "usage_updated" | "status_changed" | "pause_requested" | "pause_completed" | "resume_requested" | "resume_completed"
   | "task_paused" | "task_resumed" | "task_completed" | "task_failed"
-  | "task_cancelled" | "task_timed_out" | "limit_reached" | "kill_switch";
+  | "task_cancelled" | "task_timed_out" | "limit_reached" | "kill_switch" | "checkpoint_saved";
 
 export interface Correlation {
   request_id?: string | null;

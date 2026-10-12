@@ -165,6 +165,9 @@ def scenarios() -> dict[str, L.Scenario]:
     )
     sc["S9c"] = L.S("S9c", "Browser search blocked", "Open https://www.google.com in Chrome, type Java Spring Boot official documentation into the Google search box and press Enter, then open the official Spring Boot documentation.",
                     max_llm_calls=10, timeout_s=300)  # fmt: skip
+    from validation import next_a  # NEXT-A complex workflows (NA1..NA5)
+
+    sc.update(next_a.scenarios())
     return sc
 
 

@@ -19,6 +19,7 @@ from app.agent.answer import (
     outcome_of,
 )
 from app.agent.executor import StepExecutor
+from app.agent.report import build_report
 from app.agent.state import RunState, TaskHandle
 from app.llm.base import LLMRequest, Message
 from app.llm.capabilities import require_for_agent
@@ -31,12 +32,16 @@ from app.models.enums import (
     TaskStatus,
     VerificationStatus,
 )
+from app.models.goal import RequirementStatus
 from app.models.plan import Plan, PlanStep
+from app.models.report import CompletionReport
 from app.models.task import Task, TaskMetrics, TaskResult
 from app.models.verification import VerificationResult, VerificationSpec
 from app.observability.logging import bind, get_logger
 from app.observability.metrics import Metrics
+from app.orchestration.checkpoint import save_checkpoint
 from app.permissions.approvals import ApprovalManager
+from app.planner.goal import extract_goal
 from app.planner.planner import Planner, merge_criteria
 from app.recovery.engine import RecoveryAttempt, RecoveryEngine, Strategy
 from app.state.events import EventBus
@@ -57,6 +62,7 @@ from app.utils.errors import (
 from app.utils.ids import utcnow
 from app.utils.templating import TemplateError, referenced_steps, resolve
 from app.verification.engine import VerificationEngine
+from app.verification.goal import as_verifications, epoch, evaluate_goal
 
 log = get_logger("runner")
 
@@ -103,6 +109,7 @@ class TaskRunner:
     # ================================================================== entry point
     async def run(self, task: Task, handle: TaskHandle) -> TaskResult:
         rs = RunState(task, handle, self.d.bus, self.d.repo)
+        rs.goal = extract_goal(task.instruction)  # the user's own words, fixed for the whole task
         ctx = self._make_context(rs)
         started = time.monotonic()
         status = TaskStatus.FAILED
@@ -167,7 +174,7 @@ class TaskRunner:
         await rs.gate()  # a task paused before it started must not spend a model call
         await rs.emit(EventType.PLANNING_STARTED, "Understanding the request and planning")
         outcome = await self.d.planner.create_plan(
-            task.id, task.instruction, meter=rs.handle.meter, token=rs.handle.token
+            task.id, task.instruction, meter=rs.handle.meter, token=rs.handle.token, goal=rs.goal
         )
         if outcome.plan is None:
             raise AgentError(
@@ -175,6 +182,7 @@ class TaskRunner:
                 code=ErrorCode.INVALID_INPUT, details={"clarification": outcome.clarification},
             )  # fmt: skip
         rs.plan = outcome.plan
+        rs.plan.goal = rs.goal
         ctx.plan_id = rs.plan.id
         self._set_llm_budget(rs)
         await self.d.repo.save_agent_action(
@@ -305,6 +313,7 @@ class TaskRunner:
                 await self._replan(rs, ctx, outcome.replan_reason, cause=outcome.replan_code)
                 await rs.set_status(TaskStatus.EXECUTING)
             await self._emit_usage(rs)
+            await save_checkpoint(self.d.repo, rs, ctx, f"after step {step.id}")
 
     # ================================================================== replanning
     @staticmethod
@@ -377,9 +386,38 @@ class TaskRunner:
             {"plan": rs.plan.model_dump(mode="json"), "reason": reason[:400]},
         )
         await rs.save()
+        await save_checkpoint(self.d.repo, rs, ctx, f"plan revised to v{rs.plan.version}")
 
     # ================================================================== verification
     async def _verify_final(
+        self, rs: RunState, ctx: ExecutionContext
+    ) -> tuple[list[VerificationResult], bool]:
+        """The plan's own criteria AND the user's explicit goal (evaluated against real state)."""
+        results, ok = await self._verify_plan_criteria(rs, ctx)
+        if rs.goal is None or not rs.goal.requirements:
+            return results, ok
+        preview = candidate_answer(rs.plan, rs.step_data, rs.step_answers)
+        found = evaluate_goal(
+            rs.goal, ctx, answer=preview.text if preview.status is AnswerStatus.ANSWERED else None,
+            since=epoch(rs.task.started_at),
+        )  # fmt: skip
+        rs.requirement_results = found
+        goal_checks = as_verifications(rs.task.id, found)
+        for check in goal_checks:
+            await self.d.repo.save_verification(check)
+            if not check.passed:
+                rs.handle.meter.usage.verification_failures += 1
+        await rs.emit(
+            EventType.VERIFICATION_COMPLETED,
+            f"Goal: {sum(r.status is RequirementStatus.MET for r in found)}/{len(found)} requirement(s) met",
+            {
+                "scope": "goal", "passed": all(c.passed for c in goal_checks), "method": "deterministic",
+                "results": [c.model_dump(mode="json", include={"kind", "passed", "message", "description"}) for c in goal_checks],
+            },
+        )  # fmt: skip
+        return [*results, *goal_checks], ok and all(c.passed for c in goal_checks)
+
+    async def _verify_plan_criteria(
         self, rs: RunState, ctx: ExecutionContext
     ) -> tuple[list[VerificationResult], bool]:
         assert rs.plan is not None
@@ -522,7 +560,7 @@ class TaskRunner:
             task_id=rs.task.id, services=self.d.services, token=h.token, pause=h.pause, meter=h.meter, guard=h.guard,
             grants=h.grants, cache=h.cache, cwd=Path(self._settings.filesystem.workspace), emit=rs.emit,
             set_status=rs.set_status, session_id=rs.task.session_id, request_id=rs.task.request_id, denied=h.denied,
-            loop_guard=h.loop_guard,
+            loop_guard=h.loop_guard, goal=rs.goal,
         )  # fmt: skip
 
     # ================================================================== finish
@@ -555,14 +593,15 @@ class TaskRunner:
                 else "final verification did not pass",
             )
             passed = False
+        report = self._report(rs, ctx)
         answer = decide_answer(
             status=status, error=error, verification_passed=passed, plan=rs.plan,
-            step_data=rs.step_data, step_answers=rs.step_answers,
+            step_data=rs.step_data, step_answers=rs.step_answers, report=report,
         )  # fmt: skip
         vstatus = self._verification_status(status, error, verification, answer)
         verified = vstatus is VerificationStatus.VERIFIED
 
-        summary = self._summary(rs, status, error, answer, vstatus)
+        summary = self._summary(rs, status, error, answer, vstatus, report)
         usage = rs.handle.meter.usage
         provider = self.d.gateway.provider if self.d.gateway else None
         metrics = TaskMetrics(
@@ -575,10 +614,13 @@ class TaskRunner:
             pause_count=usage.pause_count, resume_count=usage.resume_count, vision_calls=usage.vision_calls,
             task_duration=round(duration_s, 2), final_status=status.value, verified=verified,
             answer_status=answer.status.value,
+            outcome=outcome_of(status, error, report).value, replan_count=usage.replans,
+            requirements_total=len(report.requirements), requirements_met=len(report.met),
+            steps_completed=len(report.completed), steps_failed=len(report.failed),
         )  # fmt: skip
         result = TaskResult(
             status=status, summary=summary, verified=verified, verification=verification,
-            artifacts=rs.artifacts, error=error, outcome=outcome_of(status, error),
+            artifacts=rs.artifacts, error=error, outcome=outcome_of(status, error, report), report=report,
             verification_status=vstatus, answer_status=answer.status, answer=answer.text,
             duration_s=round(duration_s, 2), usage=usage, metrics=metrics,
         )  # fmt: skip
@@ -593,6 +635,10 @@ class TaskRunner:
         except Exception:  # pragma: no cover
             task.status = status
         await rs.save()
+        try:
+            await save_checkpoint(self.d.repo, rs, ctx, f"task {status.value.lower()}")
+        except Exception:  # a checkpoint must never change how a task ends
+            log.debug("final checkpoint failed", exc_info=True)
         event = {
             TaskStatus.COMPLETED: EventType.TASK_COMPLETED,
             TaskStatus.FAILED: EventType.TASK_FAILED,
@@ -603,6 +649,24 @@ class TaskRunner:
         self.d.metrics.observe_task_finished(status.value, duration_s, usage)
         log.info("task_finished", extra={"metrics": metrics.model_dump()})
         return result
+
+    def _report(self, rs: RunState, ctx: ExecutionContext) -> CompletionReport:
+        """Steps and requirements as they really are now (requirements are re-read from disk)."""
+        found = rs.requirement_results
+        if rs.goal is not None and rs.goal.requirements:
+            try:
+                preview = candidate_answer(rs.plan, rs.step_data, rs.step_answers)
+                found = evaluate_goal(
+                    rs.goal, ctx, answer=preview.text if preview.status is AnswerStatus.ANSWERED else None,
+                    since=epoch(rs.task.started_at),
+                )  # fmt: skip
+                rs.requirement_results = found
+            except Exception:  # reporting must not fail the task
+                log.debug("goal evaluation for the report failed", exc_info=True)
+        usage = rs.handle.meter.usage
+        return build_report(
+            rs.plan, found, effects=ctx.observed.effects, replans=usage.replans, recoveries=usage.recoveries,
+        )  # fmt: skip
 
     @staticmethod
     def _verification_status(
@@ -626,7 +690,7 @@ class TaskRunner:
     @staticmethod
     def _summary(
         rs: RunState, status: TaskStatus, error: ErrorInfo | None, answer: AnswerDecision,
-        vstatus: VerificationStatus,
+        vstatus: VerificationStatus, report: CompletionReport | None = None,
     ) -> str:  # fmt: skip
         plan = rs.plan
         if plan is None:
@@ -653,6 +717,8 @@ class TaskRunner:
             lines.append(f"- {s.title}: {s.error.message[:160] if s.error else 'failed'}")
         if skipped and status is not TaskStatus.COMPLETED:
             lines.append(f"{len(skipped)} step(s) were not run.")
+        if report is not None and status is not TaskStatus.COMPLETED and report.requirements:
+            lines.append(report.progress_text())
         if answer.status is AnswerStatus.ANSWERED and answer.text:
             lines.append("Answer: " + answer.text[:600])
         return "\n".join(lines)

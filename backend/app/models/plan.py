@@ -8,6 +8,7 @@ from typing import Any
 from pydantic import BaseModel, Field, model_validator
 
 from app.models.enums import StepKind, StepStatus
+from app.models.goal import GoalSpec
 from app.models.verification import VerificationSpec
 from app.utils.errors import ErrorInfo
 from app.utils.ids import new_id, utcnow
@@ -68,6 +69,8 @@ class Plan(BaseModel):
     # What to tell the user, resolved deterministically from recorded step outputs, e.g.
     # 'The page title is {{steps.s2.data.title}}'. Used when no adaptive step produced an answer.
     answer_template: str | None = None
+    # The user's explicit requirements and restrictions, extracted by code (never by the model).
+    goal: GoalSpec | None = None
     created_at: datetime = Field(default_factory=utcnow)
 
     def step(self, step_id: str) -> PlanStep:

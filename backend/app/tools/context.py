@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any
 
 from app.config.settings import Settings
 from app.models.enums import EventType, TaskStatus
+from app.models.goal import GoalSpec
 from app.observability.metrics import Metrics
 from app.observability.usage import UsageMeter
 from app.perception.cache import ObservationCache
@@ -16,6 +17,7 @@ from app.permissions.engine import TaskGrants
 from app.security.injection import InjectionGuard
 from app.security.paths import PathPolicy
 from app.tools.loop_guard import LoopGuard
+from app.tools.observed import Observed
 from app.utils.control import CancelToken, PauseGate
 
 if TYPE_CHECKING:
@@ -66,6 +68,9 @@ class ExecutionContext:
         default_factory=LoopGuard
     )  # per-task action ledger + loop detection
     extras: dict[str, Any] = field(default_factory=dict)
+    # The user's explicit goal (restrictions are enforced by the router) and what the task has seen/written.
+    goal: GoalSpec | None = None
+    observed: Observed = field(default_factory=Observed)
 
     @property
     def settings(self) -> Settings:

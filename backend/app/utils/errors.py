@@ -36,6 +36,7 @@ class ErrorCode(StrEnum):
     COMMAND_BLOCKED = "command_blocked"
     URL_BLOCKED = "url_blocked"
     INJECTION_BLOCKED = "prompt_injection_blocked"
+    GOAL_VIOLATION = "goal_violation"  # the user's own request forbids this action
     # environment
     NOT_FOUND = "not_found"
     ALREADY_EXISTS = "already_exists"
@@ -96,6 +97,7 @@ SINGLE_REPLAN_CODES: frozenset[ErrorCode] = frozenset(
         ErrorCode.PATH_BLOCKED,
         ErrorCode.COMMAND_BLOCKED,
         ErrorCode.URL_BLOCKED,
+        ErrorCode.GOAL_VIOLATION,
     }
 )
 

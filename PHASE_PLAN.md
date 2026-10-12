@@ -47,7 +47,19 @@ Mapping of the delivery phases to what exists in the repository. Status: ✅ imp
 Work starts from the checkpoint. The live gate in [PROJECT_STATUS.md](PROJECT_STATUS.md) is the regression set for every phase:
 it must keep passing and its numbers are the baseline.
 
-### NEXT-A — Complex single-user workflows  ← recommended next
+### NEXT-A — Complex single-user workflows  ← implemented on `phase/next-a-complex-single-user-workflows`; live validation incomplete
+
+Status: **READY FOR MORE SINGLE-USER TESTING.** Implemented and covered by deterministic tests: explicit goal extraction and
+evaluation, router-enforced restrictions, `fs_find` / `fs_organize` / `fs_read_many`, grounded summaries and sources, `PARTIAL`
+outcome and completion report, checkpoints, failed-command evidence for recovery, lazily built (Electron) UI trees. Live validation:
+NA1 ran once and was cut off by the model account's spending limit (files verified correct independently), NA2–NA5 did not run.
+Details: [docs/next-a/implementation.md](docs/next-a/implementation.md), [docs/next-a/validation-results.md](docs/next-a/validation-results.md).
+
+Remaining NEXT-A work, in order: (1) raise the LLM key limit and run `NA1`–`NA5` (`SAA_CAMPAIGN_TAG=nexta python -m validation.campaign run NA1`),
+fixing each finding with a regression test; (2) re-run the 18-scenario live gate as the regression set; (3) process-restart recovery
+(below); (4) adaptive-loop cost.
+
+Original backlog:
 
 * Long, multi-application tasks (10+ steps, browser + files + desktop in one task); measure completion, calls and recoveries.
 * Reduce adaptive-loop cost: one model call per action today (dynamic page 8 calls, blocked-search fallback 14).

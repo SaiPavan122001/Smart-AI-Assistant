@@ -140,3 +140,37 @@ describe("taskView reducer", () => {
     expect(emptyView("x")).toMatchObject({ taskId: "x", status: "CREATED", timeline: [], pendingApprovals: [] });
   });
 });
+
+describe("complex workflows (NEXT-A)", () => {
+  it("keeps one updating checkpoint line and exposes progress, not a flood of events", () => {
+    resetSeq();
+    const v = buildTaskView("task_1", [
+      ev("checkpoint_saved", { message: "Checkpoint: 1 done, 3 remaining", data: { completed: ["s1"], remaining: ["s2", "s3", "s4"], outstanding_requirements: ["r1"] } }),
+      ev("checkpoint_saved", { message: "Checkpoint: 2 done, 2 remaining", data: { completed: ["s1", "s2"], remaining: ["s3", "s4"], outstanding_requirements: ["r1"] } }),
+    ]);
+    expect(v.timeline.filter((t) => t.key === "checkpoint")).toHaveLength(1);
+    expect(v.timeline[0]!.detail).toBe("Checkpoint: 2 done, 2 remaining");
+    expect(v.progress).toEqual({ completed: ["s1", "s2"], remaining: ["s3", "s4"], outstanding: ["r1"] });
+  });
+
+  it("shows unmet requirements separately, so a passing plan check cannot hide them", () => {
+    resetSeq();
+    const v = buildTaskView("task_1", [
+      ev("verification_completed", { message: "Verification task: 1/1 passed", data: { scope: "task", passed: true } }),
+      ev("verification_completed", { message: "Goal: 1/2 requirement(s) met", data: { scope: "goal", passed: false } }),
+    ]);
+    const titles = v.timeline.map((t) => t.title);
+    expect(titles).toContain("Verified");
+    expect(titles).toContain("Requirements not met");
+  });
+
+  it("labels a partly completed task as such, not as success or a plain failure", () => {
+    resetSeq();
+    const v = buildTaskView("task_1", [
+      ev("task_failed", { message: "Failed", data: { result: result({ status: "FAILED", verified: false, outcome: "PARTIAL", verification_status: "FAILED", answer_status: "WITHHELD", answer: "partly" }) } }),
+    ]);
+    expect(v.timeline.at(-1)!.title).toBe("Task only partly completed");
+    expect(v.timeline.at(-1)!.icon).toBe("warn");
+    expect(v.status).toBe("FAILED");
+  });
+});

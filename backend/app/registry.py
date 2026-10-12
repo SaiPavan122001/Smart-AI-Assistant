@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from app.tools.filesystem.tools import FILESYSTEM_TOOLS
+from app.tools.filesystem.workflow import WORKFLOW_TOOLS
 from app.tools.registry import ToolRegistry
 from app.tools.terminal.tools import TERMINAL_TOOLS
 
@@ -10,7 +11,7 @@ from app.tools.terminal.tools import TERMINAL_TOOLS
 def build_registry(*, include_browser: bool = True, include_desktop: bool = True,
                    include_vision: bool = True, include_search: bool = True) -> ToolRegistry:  # fmt: skip
     registry = ToolRegistry()
-    for cls in [*FILESYSTEM_TOOLS, *TERMINAL_TOOLS]:
+    for cls in [*FILESYSTEM_TOOLS, *WORKFLOW_TOOLS, *TERMINAL_TOOLS]:
         registry.register(cls())
     if include_browser:
         from app.tools.browser.tools import BROWSER_TOOLS

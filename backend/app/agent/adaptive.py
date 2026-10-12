@@ -129,6 +129,17 @@ class AdaptiveRunner:
                     continue
                 result = await self._call(tu, ctx, rationale or goal, seen)
                 results.append(result)
+                if (
+                    not result.ok
+                    and result.error is not None
+                    and result.error.code is ErrorCode.LIMIT_EXCEEDED
+                ):
+                    # A task-level budget (actions, shell operations, ...) is spent: nothing more can run,
+                    # so asking the model for another approach only burns model calls.
+                    return AdaptiveOutcome(
+                        success=False, iterations=i, artifacts=artifacts, results=results,
+                        summary="Stopped: a task limit was reached.", error=result.error,
+                    )  # fmt: skip
                 if not result.ok:
                     batch_failed = tu.name
                     refused = result.error is not None and result.error.code in _USER_REFUSALS

@@ -67,6 +67,27 @@ class Snapshot(BaseModel):
     quality: str = "good"  # good | poor | empty  (how much structure the app exposes)
 
 
+_FRAME_ROLES = frozenset({"pane", "window", "titlebar"})
+_FRAME_NAMES = frozenset({"minimize", "maximize", "restore", "close", "system"})
+
+
+def exposure_quality(elements: list[UIElement]) -> str:
+    """How much structure an app exposes: ``empty`` | ``poor`` | ``good``.
+
+    The window frame (title bar, minimize / restore / close) does not count: an Electron or Chromium
+    app answers its FIRST UI Automation request with only that frame (it builds its accessibility tree
+    lazily), which used to be reported as "good".
+    """
+    if not elements:
+        return "empty"
+    meaningful = [
+        e
+        for e in elements
+        if e.role not in _FRAME_ROLES and e.name.strip().lower() not in _FRAME_NAMES
+    ]
+    return "poor" if len(meaningful) <= 3 else "good"
+
+
 class ClickOutcome(BaseModel):
     method: str  # invoke | toggle | select | mouse | point
     element: UIElement | None = None

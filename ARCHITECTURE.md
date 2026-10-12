@@ -131,6 +131,15 @@ See [docs/architecture/permissions.md](docs/architecture/permissions.md) and [do
 * **Vision** — a separate provider setting (`SAA_VISION__*`), used only through `vision_capture` + `vision_analyze`, metered by
   `max_vision_calls`, gated by a confidence threshold.
 
+### Workflows (NEXT-A)
+
+`planner/goal.py` extracts the user's explicit goal (named outputs, source counts, restrictions) by code; it is stored on the plan,
+enforced in the router (`GoalSpec.violation`) and evaluated against the real final state by `verification/goal.py`, using what the
+router recorded in `tools/observed.py` (URLs returned, files written, text read). `tools/filesystem/workflow.py` adds `fs_find`,
+`fs_organize` and `fs_read_many`. `agent/report.py` builds the completion report (steps, requirements, side effects);
+`orchestration/checkpoint.py` stores a progress snapshot after every step (not a resume point). Details:
+[docs/next-a/implementation.md](docs/next-a/implementation.md).
+
 ### Loop safety
 
 Per-task action ledger (`tools/loop_guard.py`): an identical state-establishing action that already succeeded is replayed, not

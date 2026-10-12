@@ -326,3 +326,82 @@ def test_symbol_queries_match_spoken_names_and_short_queries_never_match_inside_
     assert not score_ui(
         calc, "9", None, None, "Calculator"
     )  # no 'Nine' on this keypad -> not found, not guessed
+
+
+# ----------------------------------------------------------------------------- NEXT-A: lazily built trees (Electron)
+class LazyTreeBackend(FakeDesktopBackend):
+    """Like Chromium/Electron apps: the first UI Automation request only sees the window frame."""
+
+    def __init__(self, warm_after: int = 1) -> None:
+        super().__init__()
+        self.snapshots = 0
+        self._warm_after = warm_after
+
+    def snapshot(self, win: Any, *, max_depth: int, max_elements: int):  # type: ignore[no-untyped-def]
+        self.snapshots += 1
+        w = self._select(win)
+        if self.snapshots <= self._warm_after:
+            full, w.elements = w.elements, [
+                FakeElement("button", "Minimize"), FakeElement("button", "Restore"), FakeElement("button", "Close"),
+            ]  # fmt: skip
+            try:
+                return super().snapshot(win, max_depth=max_depth, max_elements=max_elements)
+            finally:
+                w.elements = full
+        return super().snapshot(win, max_depth=max_depth, max_elements=max_elements)
+
+
+def _lazy_env(tmp_path: Path, warm_after: int) -> tuple[Env, LazyTreeBackend]:
+    env = make_env(tmp_path, include_desktop=True)
+    be = LazyTreeBackend(warm_after)
+    env.services.desktop = DesktopService(be, env.settings.desktop)
+    vscode(be)
+    return env, be
+
+
+def test_window_frame_alone_is_not_a_good_tree() -> None:
+    from app.tools.desktop.models import exposure_quality
+
+    def el(role: str, name: str) -> UIElement:
+        return UIElement(ref="x", role=role, name=name)
+
+    frame = [
+        el("pane", "Visual Studio Code"),
+        el("button", "Minimize"),
+        el("button", "Restore"),
+        el("button", "Close"),
+    ]
+    assert exposure_quality(frame) == "poor"
+    assert exposure_quality([]) == "empty"
+    rich = [
+        *frame,
+        el("tab", "Search"),
+        el("tab", "Explorer"),
+        el("menuitem", "File"),
+        el("button", "Run"),
+    ]
+    assert exposure_quality(rich) == "good"
+
+
+async def test_tree_read_waits_once_for_a_lazily_built_tree(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import app.tools.desktop.tools as dt
+
+    monkeypatch.setattr(dt, "WARMUP_S", 0.0)
+    env, be = _lazy_env(tmp_path, warm_after=1)
+    tree = await run(env, "desktop_read", mode="tree", window_title="Visual Studio Code")
+    assert tree.ok and tree.data["quality"] == "good", "the second look found the real tree"
+    assert be.snapshots == 2 and any('button "Run"' in line for line in tree.data["tree"])
+
+
+async def test_a_genuinely_sparse_app_is_reported_poor_after_one_more_look(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import app.tools.desktop.tools as dt
+
+    monkeypatch.setattr(dt, "WARMUP_S", 0.0)
+    env, be = _lazy_env(tmp_path, warm_after=99)
+    tree = await run(env, "desktop_read", mode="tree", window_title="Visual Studio Code")
+    assert tree.ok and tree.data["quality"] == "poor"
+    assert be.snapshots == 2, "exactly one extra look: bounded, no polling loop"

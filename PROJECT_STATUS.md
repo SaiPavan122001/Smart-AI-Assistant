@@ -9,7 +9,35 @@ This is a single-user system: one person, one Windows machine, one task at a tim
 multi-tenant, distributed, horizontally scalable, highly available or internet-scale, and it is not claimed to be production-ready
 beyond that single-user scope. Checkpoint document: [docs/releases/v0.1.0-single-user-core.md](docs/releases/v0.1.0-single-user-core.md).
 
-## Implemented capabilities
+## NEXT-A (branch `phase/next-a-complex-single-user-workflows`, not merged, not tagged)
+
+**Status: READY FOR MORE SINGLE-USER TESTING** — implemented and deterministically tested; live validation incomplete.
+The release record below (v0.1.0) is unchanged and remains the checkpoint. Details: [docs/next-a/implementation.md](docs/next-a/implementation.md),
+[docs/next-a/validation-results.md](docs/next-a/validation-results.md).
+
+| Capability added | State |
+|---|---|
+| Explicit goal extracted by code (named outputs, source counts with URLs, prohibitions); enforced in the router; evaluated against real state; cannot be changed by a re-plan | deterministic tests |
+| `fs_find` (search inside PDFs/text, ranking, strong vs ambiguous, duplicates), `fs_organize` (atomic, idempotent, never overwrites), `fs_read_many` | deterministic tests; `fs_find` and `fs_organize` ran live once (NA1) |
+| Source URLs must have been returned by a tool; a saved summary must be grounded in what was read | deterministic tests |
+| `PARTIAL` outcome and completion report (done / failed / interrupted / not run, requirements with evidence) in the API and the dashboard | deterministic tests, frontend tests |
+| Progress checkpoints (`GET /tasks/{id}/checkpoints`); **not** a resume mechanism | deterministic tests |
+| Failed-command output reaches adaptive recovery as fenced data; a spent budget ends an adaptive step; adaptive steps get the full output of steps they depend on | deterministic tests |
+| Lazily built (Electron) UI trees are re-read once and mislabelled "good" trees are fixed | deterministic tests + one real VS Code probe |
+
+| Check | Result |
+|---|---|
+| Backend tests | **762 passed, 2 skipped** (v0.1.0: 698 / 2) |
+| `ruff`, strict `mypy` (143 files), evals | clean · clean · 17/17, 46 LLM calls (unchanged), 0 violations |
+| Frontend `tsc`, `eslint`, Vitest, build, Playwright | clean · clean · 45 passed · OK · 8 passed |
+| Live: NA1 (Workflow A) | **BLOCKED** mid-run by the model account's spending limit; files verified correct independently; found and fixed a placeholder-value bug in `fs_find` |
+| Live: NA2–NA5 | **not run** (same limit) |
+| Real VS Code | menus, tabs, sidebar, terminal tabs reachable; **editor text not reachable**; not a coding surface |
+
+Known limits specific to NEXT-A: live behaviour of the new tool chain rests on one partial run; `fs_find` needs good `context_terms`
+from the model; goal extraction and the grounding check are heuristics; checkpoints do not allow resuming after a restart.
+
+## Implemented capabilities (v0.1.0)
 
 | Component | State | Notes |
 |---|---|---|

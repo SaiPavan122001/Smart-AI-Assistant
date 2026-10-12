@@ -198,3 +198,37 @@ describe("ResultCard", () => {
     expect(screen.getByText(/2 LLM calls/)).toBeInTheDocument();
   });
 });
+
+describe("ResultCard: complex workflow reporting", () => {
+  const report = {
+    completed: [{ id: "s1", title: "Find the PDFs", status: "SUCCEEDED", summary: "" }, { id: "s2", title: "Move them", status: "SUCCEEDED", summary: "" }],
+    failed: [{ id: "s4", title: "Write the summary", status: "FAILED", summary: "not grounded" }],
+    not_run: [],
+    requirements: [
+      { id: "r1", kind: "artifact", text: "save the output as Java-summary.md", status: "met" as const, evidence: "C:/ws/Java-summary.md (315 bytes)" },
+      { id: "r2", kind: "grounded_summary", text: "the saved summary must be based on the content that was actually read", status: "unmet" as const, evidence: "only 10% of its words occur in what was read" },
+    ],
+    effects: ["fs_organize", "fs_create"], replans: 1, recoveries: 0,
+  };
+
+  it("shows a PARTIAL result with what was done, what was not, and each requirement", () => {
+    render(<ResultCard result={result({
+      status: "FAILED", verified: false, outcome: "PARTIAL", verification_status: "FAILED", answer_status: "WITHHELD",
+      answer: "The task was only partly completed; the request as a whole was NOT fulfilled.", report,
+    })} />);
+    expect(screen.getByTestId("result-status")).toHaveTextContent("PARTIAL");
+    expect(screen.queryByText("Answer:")).not.toBeInTheDocument();
+    const box = screen.getByTestId("completion-report");
+    expect(box).toHaveTextContent("Done: Find the PDFs; Move them");
+    expect(box).toHaveTextContent("Failed: Write the summary");
+    expect(box).toHaveTextContent("Completed actions were not undone");
+    const items = screen.getAllByRole("listitem").filter((li) => li.getAttribute("data-status"));
+    expect(items.map((li) => li.getAttribute("data-status"))).toEqual(["met", "unmet"]);
+    expect(items[1]).toHaveTextContent("only 10%");
+  });
+
+  it("a plain failure keeps its FAILED label", () => {
+    render(<ResultCard result={result({ status: "FAILED", verified: false, outcome: "FAILED", answer_status: "WITHHELD", answer: "no", report: { ...report, requirements: [] } })} />);
+    expect(screen.getByTestId("result-status")).toHaveTextContent("FAILED");
+  });
+});
