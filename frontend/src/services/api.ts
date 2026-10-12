@@ -7,6 +7,7 @@ import type {
   ExecutionEvent,
   LogEntry,
   PermissionPolicy,
+  RecoveryView,
   Task,
   TaskList,
   TaskStatus,
@@ -97,6 +98,10 @@ export const api = {
   cancelTask: (id: string) => request<TaskSummary>("POST", `/tasks/${id}/cancel`),
   pauseTask: (id: string) => request<TaskSummary>("POST", `/tasks/${id}/pause`),
   resumeTask: (id: string) => request<TaskSummary>("POST", `/tasks/${id}/resume`),
+  // An interrupted task: read what was found (re-assessed on every call), then decide explicitly.
+  recovery: (id: string) => request<RecoveryView>("GET", `/tasks/${id}/recovery`),
+  recoverTask: (id: string, action: "resume" | "restart" | "cancel") =>
+    request<TaskSummary>("POST", `/tasks/${id}/recover`, { action }),
   events: (id: string, afterSeq = 0) => request<ExecutionEvent[]>("GET", `/tasks/${id}/events${q({ after_seq: afterSeq, limit: 5000 })}`),
   logs: (id: string, level = "INFO") => request<LogEntry[]>("GET", `/tasks/${id}/logs${q({ level })}`),
   toolCalls: (id: string) => request<ToolCallRecord[]>("GET", `/tasks/${id}/tool-calls`),

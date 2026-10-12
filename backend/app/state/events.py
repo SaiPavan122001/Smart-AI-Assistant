@@ -11,7 +11,7 @@ from app.models.enums import EventType
 from app.models.events import Correlation, ExecutionEvent
 from app.observability.logging import get_logger
 from app.state.repository import Repository
-from app.utils.redact import redact
+from app.utils.redact import redact, redact_text
 
 log = get_logger("events")
 
@@ -71,7 +71,7 @@ class EventBus:
             task_id=task_id,
             seq=self._seq[task_id],
             type=type_,
-            message=message,
+            message=redact_text(message),  # e.g. an error text quoting a command or a file line
             data=redact(data or {}),
             correlation=corr,
         )

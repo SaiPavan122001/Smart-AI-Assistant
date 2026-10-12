@@ -11,10 +11,10 @@ from pydantic import BaseModel, Field, model_validator
 from app.models.enums import Capability, RiskLevel
 from app.models.tool import RetryPolicy, RiskAssessment
 from app.security.urls import check_url
-from app.tools.base import Tool, ToolOutput
+from app.tools.base import Reconciliation, Tool, ToolOutput
 from app.tools.browser.elements import SENSITIVE_ACTION
 from app.tools.browser.session import BrowserSession
-from app.tools.context import ExecutionContext
+from app.tools.context import ExecutionContext, ToolServices
 from app.tools.schema import OutputModel
 from app.utils.errors import AgentError, ErrorCode, PolicyViolation
 
@@ -207,6 +207,13 @@ def _refuse_blocked_page(ctx: ExecutionContext, url: str | None) -> None:
         )  # fmt: skip
 
 
+# Loading a page is a read: after a restart the isolated browser session is gone, so an interrupted
+# open/navigate left nothing behind and loading the page again cannot repeat a side effect.
+_SESSION_LOST = Reconciliation(
+    False, "the browser session did not survive the restart; the page is simply loaded again"
+)
+
+
 class OpenInput(BaseModel):
     url: str | None = Field(default=None, description="Optional http(s) URL to open")
     new_tab: bool = False
@@ -232,6 +239,9 @@ class BrowserOpen(Tool[OpenInput]):
             resource=args.url or "browser",
             category="browser_navigate",
         )
+
+    def reconcile(self, args: OpenInput, services: ToolServices) -> Reconciliation:
+        return _SESSION_LOST
 
     async def run(self, args: OpenInput, ctx: ExecutionContext) -> ToolOutput:
         _refuse_blocked_page(ctx, args.url)
@@ -273,6 +283,9 @@ class BrowserNavigate(Tool[NavInput]):
             resource=args.url,
             category="browser_navigate",
         )
+
+    def reconcile(self, args: NavInput, services: ToolServices) -> Reconciliation:
+        return _SESSION_LOST
 
     async def run(self, args: NavInput, ctx: ExecutionContext) -> ToolOutput:
         _refuse_blocked_page(ctx, args.url)

@@ -136,7 +136,9 @@ docker compose -f infra/docker/docker-compose.yml up -d --wait
   incomplete (see [validation results](docs/next-a/validation-results.md)). Other models and unattended operation are not validated.
 * `verified` proves the plan's success criteria, not that the criteria fully express the request.
 * Prompt-injection detection is heuristic; approved code runs with your privileges.
-* A task does not survive a process restart (it is marked FAILED honestly).
+* A task interrupted by a restart waits as `INTERRUPTED` until you resume, restart or cancel it. Completed steps are not repeated; an
+  action whose outcome is unknown needs your approval. Browser pages are reopened. No exactly-once guarantee for side effects
+  ([details](docs/restart-recovery.md)).
 
 Full list: [PROJECT_STATUS.md](PROJECT_STATUS.md) and [SECURITY.md](SECURITY.md).
 

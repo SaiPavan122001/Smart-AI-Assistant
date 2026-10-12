@@ -6,8 +6,15 @@ from typing import Annotated
 
 from fastapi import APIRouter, Query, Request, status
 
+from app.agent.report import build_report
 from app.api.deps import AuthDep, ContainerDep
-from app.api.schemas import CreateTaskRequest, TaskList, TaskSummary
+from app.api.schemas import (
+    CreateTaskRequest,
+    RecoverRequest,
+    RecoveryView,
+    TaskList,
+    TaskSummary,
+)
 from app.models.approval import ApprovalRequest
 from app.models.enums import TaskStatus
 from app.models.events import ExecutionEvent
@@ -85,6 +92,34 @@ async def resume_task(task_id: str, c: ContainerDep) -> TaskSummary:
     return TaskSummary.from_task(await _load(c, task_id))
 
 
+@router.get("/{task_id}/recovery", response_model=RecoveryView)
+async def task_recovery(task_id: str, c: ContainerDep) -> RecoveryView:
+    """Inspect a task that was interrupted by a service restart. Read-only: nothing is executed.
+
+    The assessment is made again on every call, because the files it looks at may have changed.
+    """
+    task = await c.runtime.interruption(task_id)
+    assert task.interruption is not None
+    report = build_report(
+        task.plan, [], effects=[], replans=task.usage.replans, recoveries=task.usage.recoveries
+    )
+    return RecoveryView(
+        task=TaskSummary.from_task(task), interruption=task.interruption, report=report
+    )
+
+
+@router.post("/{task_id}/recover", response_model=TaskSummary, status_code=status.HTTP_202_ACCEPTED)
+async def recover_task(task_id: str, body: RecoverRequest, c: ContainerDep) -> TaskSummary:
+    """Decide what happens to an interrupted task. Nothing resumes without this explicit choice."""
+    if body.action == "resume":
+        return TaskSummary.from_task(await c.runtime.resume_interrupted(task_id))
+    if body.action == "restart":
+        return TaskSummary.from_task(await c.runtime.restart_interrupted(task_id))
+    _require_active(await _load(c, task_id))
+    await c.runtime.cancel(task_id)
+    return TaskSummary.from_task(await _load(c, task_id))
+
+
 @router.get("/{task_id}/events", response_model=list[ExecutionEvent])
 async def task_events(
     task_id: str,
@@ -143,7 +178,8 @@ async def task_agent_actions(task_id: str, c: ContainerDep) -> list[AgentActionR
 async def task_checkpoints(task_id: str, c: ContainerDep) -> list[AgentActionRecord]:
     """Progress snapshots taken at step boundaries (what is done, what remains, what recovery did).
 
-    Informational only: a task is not resumed from a checkpoint after a process restart.
+    Informational only. A task interrupted by a restart is continued from its persisted plan, step
+    outputs and tool-call records (see ``/recovery``), not from a checkpoint.
     """
     await _load(c, task_id)
     return [a for a in await c.repo.list_agent_actions(task_id) if a.kind == "checkpoint"]

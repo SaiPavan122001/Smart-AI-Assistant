@@ -49,6 +49,7 @@ from app.utils.errors import (
 from app.utils.redact import redact, redact_text
 
 log = get_logger("router")
+IN_FLIGHT = "executing"  # ToolCallRecord.decision while an action has started and has no result yet
 
 _SOURCE_BY_CAPABILITY = {
     Capability.FILESYSTEM: PerceptionSource.STRUCTURED,
@@ -90,6 +91,10 @@ class ToolRouter:
                 result = self._error_result(
                     call, ErrorCode.CANCELLED, exc.message or "Task cancelled"
                 )
+                if ctx.token.suspended and call.id in ctx.extras.get("executing", ()):
+                    # The service is stopping while this action was running: whether it took effect
+                    # is unknown. Its record stays "in flight" so recovery reconciles it.
+                    return result
                 await self._record(
                     ctx, call, result, None, "cancelled", exc.message or "Task cancelled"
                 )
@@ -125,6 +130,7 @@ class ToolRouter:
             )  # fmt: skip
 
         orig_key = call_key(call.tool, call.args)  # before any argument masking
+        call.fingerprint = orig_key
         # ---- the user's own restrictions ("do not delete anything") outrank every plan ------------
         if ctx.goal is not None:
             broken = ctx.goal.violation(call.tool, call.args)
@@ -140,6 +146,12 @@ class ToolRouter:
                 "The user already refused this exact action in this task. It was NOT performed and will not be re-requested.",
                 started,
             )  # fmt: skip
+
+        # ---- resumed task: an action that already happened before the interruption is not repeated
+        if ctx.resume is not None and not spec.read_only:
+            prior = ctx.resume.take(orig_key)
+            if prior is not None:
+                return await self._replay_recorded(call, ctx, prior, orig_key)
 
         # ---- action ledger: loop protection + idempotent state-establishing actions --------------
         lg = ctx.loop_guard.check(orig_key, spec)
@@ -220,8 +232,9 @@ class ToolRouter:
             )  # fmt: skip
 
         # ---- permission decision --------------------------------------------------------
+        uncertain = ctx.resume.uncertain.get(orig_key) if ctx.resume is not None else None
         decision = self.engine.decide(
-            spec, assessment, grants=ctx.grants, tainted=ctx.guard.tainted
+            spec, assessment, grants=ctx.grants, tainted=ctx.guard.tainted, uncertain=uncertain
         )
         await self._audit(ctx, call, assessment, decision.action, decision.reason, decision.via)
         await ctx.event(
@@ -250,6 +263,18 @@ class ToolRouter:
             denied = await self._ask(call, ctx, assessment, decision, started, orig_key)
             if denied is not None:
                 return denied
+            # ---- the approval is for the action that was SHOWN ---------------------------------
+            # The user may have taken minutes to decide. If the same call would now do something
+            # else (replace a file that did not exist, hit a protected path, carry a higher risk),
+            # the approval does not cover it: nothing runs and the action has to be asked again.
+            changed = await self._changed_since_approval(tool, args, ctx, assessment)
+            if changed:
+                return await self._finish_failed(
+                    call, ctx, ErrorCode.APPROVAL_STALE,
+                    f"Not performed: the action changed after it was approved ({changed}). "
+                    "The approval covered only what was shown.",
+                    started, assessment=assessment, decision="deny",
+                )  # fmt: skip
 
         # ---- last-moment checks (kill switch / pause / limits) -----------------------
         ctx.token.raise_if_cancelled()
@@ -265,9 +290,34 @@ class ToolRouter:
                 call, ctx, ErrorCode.LIMIT_EXCEEDED, exc.message, started, assessment=assessment
             )  # fmt: skip
 
+        # ---- write-ahead intent: a side effect never starts unrecorded -----------------------
+        # If the process dies during the call, this row (no result yet) is how startup recovery
+        # knows an action was in flight, so it is reconciled instead of blindly repeated.
+        if not spec.read_only:
+            try:
+                await self.repo.save_tool_call(
+                    ctx.task_id,
+                    ToolCallRecord(
+                        call=call.model_copy(update={"args": redact(call.args)}),
+                        assessment=assessment, decision=IN_FLIGHT, decision_reason=decision.reason,
+                    ),
+                )  # fmt: skip
+            except Exception:
+                log.exception("failed to record the start of an action", extra={"tool": call.tool})
+                return await self._finish_failed(
+                    call, ctx, ErrorCode.INTERNAL,
+                    "The action was NOT performed: its start could not be recorded, so it could not "
+                    "be recovered safely after an interruption.",
+                    started, assessment=assessment, decision="deny",
+                )  # fmt: skip
+            ctx.extras.setdefault("executing", set()).add(call.id)
+
         # ---- execute --------------------------------------------------------------------
         await ctx.event(EventType.ACTION_STARTED, f"{call.tool}", {"tool": call.tool})
         output, error, attempts = await self._run_with_retries(tool, args, ctx, spec)
+        ctx.extras.get("executing", set()).discard(call.id)
+        if uncertain is not None and ctx.resume is not None:
+            await self._close_uncertain(ctx, orig_key)  # the user decided and it has now run
         duration_ms = (time.perf_counter() - started) * 1000
 
         if error is not None or output is None:
@@ -339,6 +389,42 @@ class ToolRouter:
         )
         return result
 
+    async def _replay_recorded(
+        self, call: ToolCall, ctx: ExecutionContext, prior: ToolResult, key: str
+    ) -> ToolResult:
+        """Resumed task: this exact action completed before the interruption. Return what it
+        returned then; do NOT execute it again."""
+        result = ToolResult(
+            tool_call_id=call.id, tool=call.tool, ok=True, cached=True, artifacts=prior.artifacts,
+            data={**prior.data, "replayed": True}, untrusted=prior.untrusted,
+            summary=f"Already done before the interruption; NOT repeated: {prior.summary}",
+        )  # fmt: skip
+        await ctx.event(
+            EventType.ACTION_COMPLETED, result.summary,
+            {"tool": call.tool, "ok": True, "replayed": True, "fingerprint": key, "after_restart": True},
+        )  # fmt: skip
+        await self._record(
+            ctx, call, result, None, "replayed", "completed before the service was interrupted"
+        )
+        return result
+
+    async def _close_uncertain(self, ctx: ExecutionContext, key: str) -> None:
+        """An action whose outcome was unknown after a restart has run again with the user's
+        approval: the old open records get a result, so they are not asked about a second time."""
+        assert ctx.resume is not None
+        ctx.resume.uncertain.pop(key, None)
+        for old in ctx.resume.uncertain_records.pop(key, []):
+            old.result = self._error_result(
+                old.call, ErrorCode.INTERRUPTED,
+                "Interrupted by a service restart; the outcome was unknown. The action was run "
+                "again after the user approved it.",
+            )  # fmt: skip
+            old.decision = "interrupted"
+            try:
+                await self.repo.save_tool_call(ctx.task_id, old)
+            except Exception:
+                log.exception("failed to close an interrupted tool call")
+
     async def _report_loop(self, ctx: ExecutionContext, call: ToolCall) -> None:
         await report_loop(ctx, self.repo, call.tool)
 
@@ -348,6 +434,13 @@ class ToolRouter:
         started: float, orig_key: str,
     ) -> ToolResult | None:  # fmt: skip
         explanation = list(assessment.reasons)
+        if decision.via == "restart_uncertain":
+            explanation.insert(
+                0,
+                "This exact action was in progress when the service stopped and it could not be "
+                "determined whether it took effect. Approve only if repeating it is safe; check the "
+                "current state first if you are not sure.",
+            )
         if decision.tainted_escalation:
             explanation.append(
                 "This task read content that contained instructions aimed at the agent; "
@@ -357,6 +450,7 @@ class ToolRouter:
             task_id=ctx.task_id,
             step_id=ctx.step_id,
             tool_call_id=call.id,
+            fingerprint=orig_key,
             tool=call.tool,
             action=assessment.action,
             reason=call.rationale or "The agent did not provide a rationale for this action.",
@@ -388,7 +482,9 @@ class ToolRouter:
                 {"approval_id": req.id, "scope": (req.scope_granted or ApprovalScope.ONCE).value},
             )  # fmt: skip
             if req.scope_granted == ApprovalScope.TASK:
-                ctx.grants.add(call.tool, assessment.category, note=req.action)
+                ctx.grants.add(
+                    call.tool, assessment.category, note=req.action, risk=assessment.risk
+                )
             await ctx.set_status(TaskStatus.EXECUTING)
             return None
         await ctx.event(
@@ -397,8 +493,10 @@ class ToolRouter:
         )  # fmt: skip
         if req.status == ApprovalStatus.CANCELLED:
             raise TaskCancelled("Task cancelled while waiting for approval")
-        await ctx.set_status(TaskStatus.EXECUTING)
+        # Remembered BEFORE the status change that persists the task: a refusal must survive a
+        # restart, so the same action is not put in front of the user again.
         ctx.denied.add(orig_key)
+        await ctx.set_status(TaskStatus.EXECUTING)
         code = (
             ErrorCode.APPROVAL_TIMEOUT
             if req.status == ApprovalStatus.EXPIRED
@@ -410,6 +508,28 @@ class ToolRouter:
             "It was NOT performed. Do not retry it; choose a different approach or stop.",
             started, assessment=assessment, decision="deny",
         )  # fmt: skip
+
+    @staticmethod
+    async def _changed_since_approval(
+        tool: Tool, args: Any, ctx: ExecutionContext, approved: RiskAssessment,  # type: ignore[type-arg]
+    ) -> str | None:  # fmt: skip
+        """Assess the call again, now. Returns what differs from the approved assessment, or None."""
+        try:
+            maybe = tool.assess(args, ctx)
+            now = await maybe if inspect.isawaitable(maybe) else maybe
+        except AgentError as exc:
+            return f"it is no longer allowed: {exc.message[:160]}"
+        except Exception as exc:
+            return f"it can no longer be assessed ({type(exc).__name__})"
+        if now.hard_deny:
+            return f"it is no longer allowed: {now.hard_deny[:160]}"
+        if now.risk > approved.risk:
+            return f"its risk rose from {approved.risk.label} to {now.risk.label}"
+        if now.category != approved.category:
+            return f"it is now '{now.category}', it was approved as '{approved.category}'"
+        if now.resource != approved.resource:
+            return "it now affects a different resource"
+        return None
 
     # ------------------------------------------------------------------ execution
     async def _run_with_retries(
@@ -551,7 +671,7 @@ class ToolRouter:
                     result=result,
                     assessment=assessment,
                     decision=decision,
-                    decision_reason=reason,
+                    decision_reason=redact_text(reason),  # may quote a tool's error text
                 ),
             )
         except Exception:
@@ -569,7 +689,7 @@ class ToolRouter:
                     tool=call.tool,
                     risk=int(assessment.risk),
                     action=action.value,
-                    reason=reason,
+                    reason=redact_text(reason),
                     via=via,
                 )
             )

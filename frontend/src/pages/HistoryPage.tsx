@@ -5,7 +5,7 @@ import { useAsync } from "../hooks/useAsync";
 import { api } from "../services/api";
 import type { TaskStatus } from "../types/api";
 
-const STATUSES: (TaskStatus | "")[] = ["", "COMPLETED", "FAILED", "CANCELLED", "TIMED_OUT", "EXECUTING", "WAITING_APPROVAL"];
+const STATUSES: (TaskStatus | "")[] = ["", "COMPLETED", "FAILED", "CANCELLED", "TIMED_OUT", "INTERRUPTED", "EXECUTING", "WAITING_APPROVAL"];
 const PAGE = 20;
 
 export function HistoryPage() {

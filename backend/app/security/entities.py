@@ -19,8 +19,17 @@ _ENTITY = re.compile(
 _GENERIC = frozenset({"e.g", "i.e", "etc.", "vs."})
 
 
+_SLASHES = re.compile(r"/{2,}")
+
+
 def normalize_path_text(text: str) -> str:
-    return text.replace("\\", "/").lower()
+    """One comparable form for a path, however it was written.
+
+    Tool results are scanned as JSON, where every backslash is doubled. Without collapsing repeated
+    separators, a Windows path named by injected text never matched the arguments of the call that
+    used it, so the provenance block did not fire for exactly the paths it exists for.
+    """
+    return _SLASHES.sub("/", text.replace("\\", "/")).lower()
 
 
 def extract_entities(text: str) -> set[str]:

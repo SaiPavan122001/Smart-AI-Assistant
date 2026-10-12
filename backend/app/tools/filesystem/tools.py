@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import fnmatch
+import hashlib
 import os
 import shutil
 from datetime import UTC, datetime
@@ -14,9 +15,9 @@ from pydantic import BaseModel, Field
 
 from app.models.enums import Capability, RiskLevel
 from app.models.tool import RetryPolicy, RiskAssessment
-from app.security.paths import PathPolicy, ResolvedPath
-from app.tools.base import Tool, ToolOutput
-from app.tools.context import ExecutionContext
+from app.security.paths import PathPolicy, ResolvedPath, is_redirect, walk_confined
+from app.tools.base import Reconciliation, Tool, ToolOutput
+from app.tools.context import ExecutionContext, ToolServices
 from app.tools.schema import OutputModel
 from app.utils.errors import AgentError, ErrorCode, PathViolation
 
@@ -42,7 +43,7 @@ def _stat_entry(p: Path) -> dict[str, Any]:
 
 def _dir_stats(p: Path, cap: int = 5000) -> tuple[int, int]:
     files = size = 0
-    for root, _dirs, names in os.walk(p):
+    for root, _dirs, names in walk_confined(p):
         for n in names:
             files += 1
             try:
@@ -173,8 +174,8 @@ class FsList(Tool[FsListInput]):
                 if len(entries) >= limit:
                     truncated = True
                     return
-                if c.is_symlink():
-                    continue
+                if is_redirect(c):
+                    continue  # a symlink or junction: what it points to is not part of this folder
                 rel = str(c.relative_to(rp.path))
                 if args.pattern is None or fnmatch.fnmatch(c.name.lower(), args.pattern.lower()):
                     e = _stat_entry(c)
@@ -233,14 +234,20 @@ class FsSearch(Tool[FsSearchInput]):
         needle = args.content_query.lower() if args.content_query else None
         matches: list[dict[str, Any]] = []
         scanned = 0
-        for root, dirs, names in os.walk(rp.path):
-            dirs[:] = [d for d in dirs if not os.path.islink(os.path.join(root, d)) and not d.startswith(".")
-                       and d not in {"node_modules", "__pycache__", ".git", "venv", ".venv"}]  # fmt: skip
+        for root, _dirs, names in walk_confined(
+            rp.path, skip_hidden=True, skip_dirs={"node_modules", "__pycache__", ".git", "venv", ".venv"},
+        ):  # fmt: skip
             for n in names:
                 scanned += 1
                 if scanned > 50000:
                     break
                 p = Path(root, n)
+                try:
+                    # Every match passes the policy itself: credential-looking and protected files
+                    # are invisible, by name and by content.
+                    ctx.paths.resolve(str(p), cwd=ctx.cwd)
+                except PathViolation:
+                    continue
                 if exts and p.suffix.lower() not in exts:
                     continue
                 if args.name_pattern and not fnmatch.fnmatch(n.lower(), args.name_pattern.lower()):
@@ -467,6 +474,60 @@ def _same_or_inside(child: Path, parent: Path) -> bool:
     return c == p or c.startswith(p.rstrip(os.sep) + os.sep)
 
 
+def _file_digest(p: Path) -> str:
+    h = hashlib.sha256()
+    with p.open("rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _reconcile_transfer(services: ToolServices, args: FsMoveInput, *, move: bool) -> Reconciliation:
+    """Was an interrupted move/copy carried out? Answered from the files only; "unknown" when unsure."""
+    if args.overwrite:
+        return Reconciliation(None, "overwrite was requested: what the destination held is unknown")
+    try:
+        cwd = services.settings.filesystem.workspace
+        src = services.path_policy.resolve(args.src, cwd=cwd).path
+        dst = services.path_policy.resolve(args.dst, cwd=cwd).path
+    except (AgentError, OSError):
+        return Reconciliation(None, "the paths can no longer be resolved")
+    # Same rule as _plan_transfer: an existing folder as destination means "into that folder".
+    inside = dst / src.name
+    target = inside if dst.is_dir() else dst
+    out = ToolOutput(
+        data={"src": str(src), "dst": str(target)},
+        artifacts={"src": str(src), "dst": str(target)},
+        summary=f"{'Moved' if move else 'Copied'} {src.name} to {target} (confirmed after a restart)",
+    )
+    if move:
+        if src.exists() and not target.exists():
+            return Reconciliation(
+                False, "the source is still in place and the destination is empty"
+            )
+        if not src.exists() and target.exists() and (target.is_file() or target == inside):
+            return Reconciliation(
+                True, "the source is gone and the item is at the destination", out
+            )
+        return Reconciliation(None, "source and destination do not show whether the move happened")
+    if not src.exists():
+        return Reconciliation(None, "the source no longer exists")
+    if not target.exists():
+        return Reconciliation(False, "nothing exists at the destination")
+    try:
+        same = (
+            src.is_file()
+            and target.is_file()
+            and src.stat().st_size == target.stat().st_size
+            and _file_digest(src) == _file_digest(target)
+        )
+    except OSError:
+        same = False
+    if same:
+        return Reconciliation(True, "the destination is an identical copy of the source", out)
+    return Reconciliation(None, "the destination exists but is not a verified copy of the source")
+
+
 class FsMove(Tool[FsMoveInput]):
     name = "fs_move"
     Output = FsTransferOutput
@@ -487,6 +548,9 @@ class FsMove(Tool[FsMoveInput]):
             risk=risk, action=f"Move {src} → {dst}", resource=f"{src} → {dst}", reasons=reasons,
             category="file_overwrite" if reasons else "file_move",
         )  # fmt: skip
+
+    def reconcile(self, args: FsMoveInput, services: ToolServices) -> Reconciliation:
+        return _reconcile_transfer(services, args, move=True)
 
     async def run(self, args: FsMoveInput, ctx: ExecutionContext) -> ToolOutput:
         src, dst, exists = _plan_transfer(ctx, args.src, args.dst, move=True)
@@ -532,13 +596,20 @@ class FsCopy(Tool[FsCopyInput]):
             category="file_overwrite" if reasons else "file_copy",
         )  # fmt: skip
 
+    def reconcile(self, args: FsCopyInput, services: ToolServices) -> Reconciliation:
+        return _reconcile_transfer(services, args, move=False)
+
     async def run(self, args: FsCopyInput, ctx: ExecutionContext) -> ToolOutput:
         src, dst, exists = _plan_transfer(ctx, args.src, args.dst, move=False)
         if exists and not args.overwrite:
             raise AgentError(f"Destination already exists: {dst}", code=ErrorCode.ALREADY_EXISTS)
         dst.parent.mkdir(parents=True, exist_ok=True)
         if src.is_dir():
-            shutil.copytree(src, dst, dirs_exist_ok=args.overwrite, symlinks=True)
+            # A symlink or junction inside the folder is not copied: its target may be anywhere.
+            shutil.copytree(
+                src, dst, dirs_exist_ok=args.overwrite, symlinks=True,
+                ignore=lambda folder, names: [n for n in names if is_redirect(os.path.join(folder, n))],
+            )  # fmt: skip
         else:
             shutil.copy2(src, dst)
         return ToolOutput(
@@ -585,6 +656,23 @@ class FsDelete(Tool[FsDeleteInput]):
         return RiskAssessment(
             risk=risk, action=f"Delete {'folder' if p.is_dir() else 'file'} {p}", resource=str(p),
             reasons=reasons, category=category, scoped_grant_allowed=risk < RiskLevel.CRITICAL,
+        )  # fmt: skip
+
+    def reconcile(self, args: FsDeleteInput, services: ToolServices) -> Reconciliation:
+        try:
+            cwd = services.settings.filesystem.workspace
+            p = services.path_policy.resolve(args.path, cwd=cwd).path
+        except (AgentError, OSError):
+            return Reconciliation(None, "the path can no longer be resolved")
+        if p.exists():
+            return Reconciliation(False, "the item is still in place")
+        return Reconciliation(
+            True,
+            "the item is no longer at its location",
+            ToolOutput(
+                data={"path": str(p), "recycled": True}, artifacts={"path": str(p)},
+                summary=f"{p.name} is no longer in place (confirmed after a restart)",
+            ),
         )  # fmt: skip
 
     async def run(self, args: FsDeleteInput, ctx: ExecutionContext) -> ToolOutput:

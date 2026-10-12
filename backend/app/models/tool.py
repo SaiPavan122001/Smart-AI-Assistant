@@ -55,6 +55,9 @@ class ToolCall(BaseModel):
     step_id: str | None = None
     # Why the agent wants this; shown verbatim in approval requests.
     rationale: str = ""
+    # Hash of the tool and its ORIGINAL arguments, set by the router. Stored with the call so an
+    # action can be recognised after a restart even though stored arguments are redacted.
+    fingerprint: str = ""
 
 
 class InjectionFinding(BaseModel):

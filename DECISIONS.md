@@ -56,7 +56,37 @@ criteria) is extended, not replaced.
 | N7 | Checkpoints are progress snapshots stored as agent actions, not resume points; no step output or document text is stored | resume after a restart needs durable workers and idempotent re-entry, which is the production-hardening phase |
 | N8 | Adaptive recovery sees a failed command's stdout/stderr as fenced untrusted data (not in the goal text); a spent budget (`LIMIT_EXCEEDED`) ends an adaptive step immediately | diagnosis needs evidence; program output is untrusted; a spent budget cannot be negotiated with by asking the model again |
 
+## Decisions from the production-reliability roadmap
+
+Branch `phase/production-reliability-roadmap`, started from `a300c2a` (NEXT-A). Roadmap and status: [PHASE_PLAN.md](PHASE_PLAN.md).
+
+| # | Decision | Why |
+|---|---|---|
+| R0 | The phases after NEXT-A are renumbered: NEXT-B restart-safe execution, C security hardening, D transactional file operations, E Windows application automation, F evaluation and live validation, G dashboard, H installable product. The earlier labels (B multi-model comparison, C production hardening, D multi-user, E distributed workers, F scalability) are withdrawn; multi-model comparison, multi-user, distributed workers and scalability stay deferred | the single-user product must be reliable first; a provider or model change is an explicit decision, never a way around a failing health check |
+| R1 | A task that is unfinished when the process stops becomes `INTERRUPTED` and **never resumes by itself**; the user resumes, restarts or cancels. This replaces "marked `FAILED` at startup" and extends N7 (a checkpoint is still not a resume point: recovery reads the plan, step states, `tasks.durable` and the tool-call records) | the agent acts on the user's own desktop; after a crash only the user knows whether continuing is still wanted. Marking the task FAILED threw away work and hid what had already been done |
+| R2 | A side-effecting tool call is recorded **before** it runs (write-ahead). If the record cannot be written the action is not performed | an in-flight action must be visible after a crash; an unrecorded effect cannot be recovered or even reported |
+| R3 | An in-flight action is classified from the observable state only (`Tool.reconcile`, read-only): safe to retry, confirmed done, confirmed not done, uncertain. Confirmed-done results are replayed; **uncertain actions always need an approval for that one call**, enforced in the permission engine above policy, trusted operations and grants. No exactly-once claim | a blind retry can move, submit or run something twice; code cannot know whether a click or a command took effect |
+| R4 | After a restart: task-scoped grants, pending approvals and approvals not yet acted on are void; refusals, the cancel request and prompt-injection taint are kept | a recovered task must not be more permitted than a new one, and must not forget what the user refused |
+| R5 | Cancel and STOP are persisted (`cancel_requested`) before they take effect | a task the user stopped must not come back as resumable because the process died a moment later |
+| R6 | A service shutdown *suspends* tasks instead of cancelling them; it uses the same recovery path as a crash | one code path, exercised by every restart, instead of a second "graceful" one that is rarely tested |
+| R7 | Durable runner state is one JSON column on the task row, written in the same transaction as the plan and steps; no new tables | the state changes together and must never be half-written; the single-user design has one writer |
+| R8 | The browser session is not restored. If remaining steps need an open page, the plan is revised with that fact | a Playwright context cannot be re-attached; pretending the page is still there produces clicks on nothing |
+
+### NEXT-C — security and permission hardening
+
+| # | Decision | Why |
+|---|---|---|
+| C1 | Every directory traversal uses `walk_confined` / `is_redirect` (`security/paths.py`): a symlink, junction or mount point is never entered and never listed. Cloud placeholder files (OneDrive) are reparse points too but are the file itself and stay visible | `os.path.islink` is False for a junction: `fs_search` walked a junction inside an allowed folder and returned the names of files outside it (and read their text when a content query was given). Found by probing, reproduced by a test |
+| C2 | Every `fs_search` match is resolved through `PathPolicy` before it is reported or its content is read | the search could be used as an oracle for the content of credential-looking files that `fs_read` refuses |
+| C3 | An approval is bound to the exact call (fingerprint, task, risk, category, resource) and the call is assessed again after the user approves; a changed action is refused with `approval_stale` | the user may decide minutes later; the approved call could by then overwrite a file that did not exist when it was shown |
+| C4 | A task grant carries the approved risk and does not cover a riskier call of the same tool and category | "approve for this task" must not grow |
+| C5 | Path text is compared in one normal form (`normalize_path_text` collapses repeated separators) | tool results are scanned as JSON, where backslashes are doubled: a Windows path named by injected text never matched the call that used it, so the provenance block did not fire |
+| C6 | Event messages, audit reasons and API error bodies are redacted, not only event data and tool results | a failing tool's error text reached the timeline and the `tool_calls` table in clear |
+| C7 | The API refuses a non-loopback address unless `SAA_SECURITY__ALLOW_REMOTE_BIND=true` and a configured token; the WebSocket token is accepted in the subprotocol only (`?token=` removed) | the API controls the computer; a URL token ends up in history and logs. The one existing test that used `?token=` now sends the subprotocol and a new test asserts the URL form is refused |
+| C8 | An approved command runs inside a Windows Job Object: the tree ends with the call and with the agent; memory and process limits are optional. The runner waits for the process to exit, not for its pipes to close | a child left running by a command kept the output pipe open, so a finished command was reported only when its timeout expired and the child outlived it. A job is lifetime and resource containment, not a sandbox |
+| C9 | Each tool is placed in one permission (`permissions/classes.py`), checked against the registry and the documentation by test; decisions stay per call (risk and category from `assess`) | a new tool cannot be added without being placed; "read" tools are proven read-only |
+
 ## Explicitly deferred (not decided against, not built)
 
 Multi-user and multi-tenancy, distributed or multi-machine workers, load balancing / autoscaling / Kubernetes, scheduled or recurring
-tasks, multi-model benchmarking, complex long-horizon workflow coverage. See [PHASE_PLAN.md](PHASE_PLAN.md).
+tasks, multi-model benchmarking. See [PHASE_PLAN.md](PHASE_PLAN.md).

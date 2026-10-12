@@ -77,8 +77,9 @@ timelines but are no longer emitted.
 ## Limits
 
 * Time spent paused counts towards `limits.max_execution_seconds`.
-* A pause does not survive a process restart: on startup, non-terminal tasks (including `PAUSED`)
-  are marked `FAILED` by `recover_orphans`, as before.
+* A pause is not a way to survive a restart by itself: on startup a `PAUSED` task becomes `INTERRUPTED`
+  like any unfinished task (`Interruption.was_paused` records it) and continues only when the user
+  resumes it. See [restart-recovery.md](restart-recovery.md).
 
 ## Tests
 

@@ -34,6 +34,9 @@ class TaskStatus(StrEnum):
     RECOVERING = "RECOVERING"
     VERIFYING = "VERIFYING"
     PAUSED = "PAUSED"  # parked at the pause gate: no tool call, LLM call, recovery or re-plan runs
+    # The process stopped while the task was unfinished. Nothing runs; the user chooses to resume,
+    # restart or cancel. Entered only by startup recovery, never by a running task.
+    INTERRUPTED = "INTERRUPTED"
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
     CANCELLED = "CANCELLED"
@@ -168,3 +171,5 @@ class EventType(StrEnum):
     CHECKPOINT_SAVED = (
         "checkpoint_saved"  # progress snapshot at a step boundary (not a resume point)
     )
+    TASK_INTERRUPTED = "task_interrupted"  # found unfinished at startup; waits for the user
+    TASK_RESUMING = "task_resuming"  # the user chose to continue an interrupted task

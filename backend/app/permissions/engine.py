@@ -18,6 +18,7 @@ class Grant:
     tool: str
     category: str
     note: str = ""
+    risk: RiskLevel = RiskLevel.HIGH  # the risk that was approved; a riskier call is not covered
 
 
 @dataclass
@@ -26,12 +27,18 @@ class TaskGrants:
 
     grants: list[Grant] = field(default_factory=list)
 
-    def add(self, tool: str, category: str, note: str = "") -> None:
-        if not self.has(tool, category):
-            self.grants.append(Grant(tool, category, note))
+    def add(
+        self, tool: str, category: str, note: str = "", *, risk: RiskLevel = RiskLevel.HIGH
+    ) -> None:
+        if not self.has(tool, category, risk):
+            self.grants.append(Grant(tool, category, note, risk))
 
-    def has(self, tool: str, category: str) -> bool:
-        return any(g.tool == tool and g.category == category for g in self.grants)
+    def has(self, tool: str, category: str, risk: RiskLevel | None = None) -> bool:
+        """Same tool, same category, and not riskier than what the user approved."""
+        return any(
+            g.tool == tool and g.category == category and (risk is None or risk <= g.risk)
+            for g in self.grants
+        )
 
 
 @dataclass
@@ -64,6 +71,24 @@ class PermissionEngine:
         *,
         grants: TaskGrants,
         tainted: bool = False,
+        uncertain: str | None = None,
+    ) -> Decision:
+        """``uncertain``: this exact action was in flight when the service stopped and its outcome
+        could not be determined. It is never allowed silently: not by policy, not by a trusted
+        operation, not by a task grant. The user decides, for this one call only."""
+        decision = self._decide(spec, assessment, grants=grants, tainted=tainted)
+        if uncertain and not spec.read_only and decision.action != Action.DENY:
+            return Decision(
+                Action.ASK,
+                f"Approval required: this action may already have happened ({uncertain})",
+                tainted_escalation=decision.tainted_escalation,
+                allowed_scopes=[ApprovalScope.ONCE],
+                via="restart_uncertain",
+            )
+        return decision
+
+    def _decide(
+        self, spec: ToolSpec, assessment: RiskAssessment, *, grants: TaskGrants, tainted: bool
     ) -> Decision:
         pol = self._policy
         if assessment.hard_deny:
@@ -120,7 +145,7 @@ class PermissionEngine:
             if (
                 assessment.scoped_grant_allowed
                 and risk < RiskLevel.CRITICAL
-                and grants.has(spec.name, assessment.category)
+                and grants.has(spec.name, assessment.category, risk)
             ):
                 return Decision(
                     Action.ALLOW, "Covered by an approval granted for this task", via="task_grant"

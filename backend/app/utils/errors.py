@@ -20,6 +20,7 @@ class ErrorCode(StrEnum):
     INTERNAL = "internal_error"
     TIMEOUT = "timeout"
     CANCELLED = "cancelled"
+    INTERRUPTED = "interrupted"  # the service stopped before the action's result was recorded
     LIMIT_EXCEEDED = "limit_exceeded"
     # search / browser-automation contract (provider-specific reasons live in ``details``)
     SEARCH_UNAVAILABLE = "SEARCH_UNAVAILABLE"  # no search provider could answer
@@ -31,6 +32,8 @@ class ErrorCode(StrEnum):
     POLICY_DENIED = "policy_denied"
     APPROVAL_DENIED = "approval_denied"
     APPROVAL_TIMEOUT = "approval_timeout"
+    # approved, but the action is no longer the one that was shown (the world changed while waiting)
+    APPROVAL_STALE = "approval_stale"
     KILL_SWITCH = "kill_switch_active"
     PATH_BLOCKED = "path_blocked"
     COMMAND_BLOCKED = "command_blocked"

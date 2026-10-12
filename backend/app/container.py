@@ -80,9 +80,12 @@ class Container:
             except Exception:
                 log.warning("stored permission policy is invalid; using defaults")
         self.log_sink.start()
-        orphans = await self.runtime.recover_orphans()
-        if orphans:
-            log.warning("marked interrupted tasks as failed", extra={"count": orphans})
+        interrupted = await self.runtime.recover_interrupted()
+        if interrupted:
+            log.warning(
+                "found tasks interrupted by a restart; they wait for the user to resume, restart or cancel",
+                extra={"count": interrupted},
+            )
 
     async def stop(self) -> None:
         await self.runtime.shutdown()

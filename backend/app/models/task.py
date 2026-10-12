@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from app.models.enums import AnswerStatus, TaskOutcome, TaskStatus, VerificationStatus
 from app.models.plan import Plan
+from app.models.recovery import DurableState, Interruption
 from app.models.report import CompletionReport
 from app.models.verification import VerificationResult
 from app.utils.errors import ErrorInfo
@@ -160,6 +161,12 @@ class Task(BaseModel):
     current_step_id: str | None = None
     current_tool: str | None = None
     current_application: str | None = None
+    # ---- restart safety (see app/orchestration/recovery.py) ----
+    idempotency_key: str | None = None  # the client's Idempotency-Key, honoured across restarts
+    cancel_requested: bool = False  # recorded before anything else: a restart never resumes it
+    durable: DurableState | None = None  # runner state needed to continue in a new process
+    interruption: Interruption | None = None  # set while status is INTERRUPTED
+    restarted_from: str | None = None  # the interrupted task this one explicitly replaces
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)
     started_at: datetime | None = None

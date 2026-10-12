@@ -12,6 +12,12 @@ Guidance for coding sessions in this repository.
 Read [docs/next-a/implementation.md](docs/next-a/implementation.md) and [docs/next-a/validation-results.md](docs/next-a/validation-results.md)
 first. Live validation of NA1–NA5 is **incomplete** (the LLM key's spending limit was reached); resume with `NA1`, see PHASE_PLAN.md.
 
+**The production-reliability roadmap (NEXT-B … NEXT-H) continues on branch `phase/production-reliability-roadmap`** (from the NEXT-A
+head; not merged, not tagged). NEXT-B (restart-safe execution) is done: read [docs/restart-recovery.md](docs/restart-recovery.md). NEXT-C (security hardening) is
+done: read the limitations in [SECURITY.md](SECURITY.md) and decisions C1–C9. Next is NEXT-D (transactional file operations);
+stages and status are in PHASE_PLAN.md. On this 8 GB machine run the checks one group at a
+time (the list is in the validation record of that document): the all-in-one `scripts\check.ps1` ran out of memory.
+
 **DO NOT redesign or redo the completed current phase.** The decisions it rests on are indexed in [DECISIONS.md](DECISIONS.md);
 change one only with a new entry that says why.
 
@@ -70,7 +76,15 @@ python -m validation.tool_probe vscode                                   # read-
   never edited by a model or a re-plan. Prohibitions are enforced in `ToolRouter`; requirements are evaluated against real state
   (`app/verification/goal.py`, `app/tools/observed.py`). A source URL is real only if a tool returned it.
 * `PARTIAL` is an outcome (status stays `FAILED`): `verified` is never true and the answer is withheld. Never relabel it as success.
-* A checkpoint is a progress snapshot, not a resume point. Do not claim a task survives a process restart.
+* A checkpoint is a progress snapshot, not a resume point. A task continues after a restart only through `docs/restart-recovery.md`:
+  startup classifies (`INTERRUPTED`), the user decides, completed actions are replayed, uncertain ones need approval. Never
+  auto-resume, never blindly retry an in-flight side effect, never claim exactly-once execution.
+* A side-effecting tool call is recorded before it runs (write-ahead). If that record cannot be written, the action does not run.
+* Task-scoped approval grants are never restored after a restart; refusals and cancel requests always are.
+* Walk directories only with `walk_confined` (`app/security/paths.py`); never `os.walk`/`iterdir` over user folders directly, and
+  never treat `os.path.islink` as enough (it is False for a junction). A new tool must be placed in `app/permissions/classes.py`.
+* An approval covers the exact call that was shown; the router re-assesses after the wait. Do not cache or reuse approvals.
+* Everything that leaves the process (events, audit rows, API errors, logs) is redacted, messages included.
 * Every bug fix comes with a regression test. Keep `python -m evals.run` thresholds green.
 * Generated docs and `.env.example` must stay in sync with the code (tests enforce both).
 

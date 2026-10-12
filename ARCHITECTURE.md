@@ -140,6 +140,15 @@ router recorded in `tools/observed.py` (URLs returned, files written, text read)
 `orchestration/checkpoint.py` stores a progress snapshot after every step (not a resume point). Details:
 [docs/next-a/implementation.md](docs/next-a/implementation.md).
 
+### Restart recovery (NEXT-B)
+
+A task continues after a process stop from what the running task persisted, not from a checkpoint: the plan with the user's goal, step
+states, step outputs (`tasks.durable`) and the tool-call records. A side-effecting call is recorded before it runs, so an action that
+was in flight is visible afterwards. `orchestration/recovery.py` classifies it (safe to retry, confirmed done, confirmed not done,
+uncertain) using each tool's read-only `reconcile`; the router replays what already happened and the permission engine forces an
+approval for what is uncertain. Startup only classifies (`INTERRUPTED`); the user resumes, restarts or cancels. Details and limits:
+[docs/restart-recovery.md](docs/restart-recovery.md).
+
 ### Loop safety
 
 Per-task action ledger (`tools/loop_guard.py`): an identical state-establishing action that already succeeded is replayed, not

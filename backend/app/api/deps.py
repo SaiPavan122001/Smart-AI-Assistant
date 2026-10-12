@@ -41,7 +41,8 @@ AuthDep = Depends(require_auth)
 
 
 def ws_token(ws: WebSocket) -> tuple[str, str | None]:
-    """Token from the ``bearer.<token>`` subprotocol (preferred: keeps it out of URLs/logs) or ?token=."""
+    """Token from the ``bearer.<token>`` subprotocol. A token in the URL (``?token=``) is NOT accepted:
+    URLs end up in browser history, proxy logs and crash reports."""
     offered = [
         p.strip() for p in (ws.headers.get("sec-websocket-protocol") or "").split(",") if p.strip()
     ]
@@ -49,7 +50,7 @@ def ws_token(ws: WebSocket) -> tuple[str, str | None]:
     for p in offered:
         if p.startswith("bearer."):
             return p[len("bearer.") :], selected
-    return ws.query_params.get("token", ""), selected
+    return "", selected
 
 
 def origin_allowed(origin: str | None, allowed: list[str]) -> bool:

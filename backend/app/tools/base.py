@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Awaitable
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, ClassVar, Generic, TypeVar
 
 from pydantic import BaseModel, Field
@@ -13,7 +14,7 @@ from app.models.tool import AuditPolicy, RetryPolicy, RiskAssessment, ToolSpec
 from app.tools.schema import describe
 
 if TYPE_CHECKING:
-    from app.tools.context import ExecutionContext
+    from app.tools.context import ExecutionContext, ToolServices
 
 InT = TypeVar("InT", bound=BaseModel)
 
@@ -97,8 +98,26 @@ class Tool(ABC, Generic[InT]):
             category=self.capability.value,
         )
 
+    def reconcile(self, args: InT, services: ToolServices) -> Reconciliation:
+        """Did a call that was in flight when the process stopped actually happen?
+
+        Read-only and side-effect free: it looks at the observable state only. The default is
+        "unknown", which makes the action ``UNCERTAIN`` after a restart: it is never repeated without
+        the user's approval. Override it only where the state gives a reliable answer.
+        """
+        return Reconciliation(None)
+
     @abstractmethod
     async def run(self, args: InT, ctx: ExecutionContext) -> ToolOutput: ...
+
+
+@dataclass(frozen=True)
+class Reconciliation:
+    """``done``: True = it happened, False = it did not, None = cannot be determined."""
+
+    done: bool | None
+    detail: str = ""
+    output: ToolOutput | None = None  # for done=True: what the call would have returned
 
 
 def _brief(args: BaseModel, limit: int = 160) -> str:

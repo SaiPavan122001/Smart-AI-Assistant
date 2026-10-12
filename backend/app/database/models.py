@@ -19,6 +19,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    false,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -67,6 +68,12 @@ class TaskRow(Base):
     usage: Mapped[dict[str, Any]] = mapped_column(JsonType, default=dict)
     result: Mapped[dict[str, Any] | None] = mapped_column(JsonType, nullable=True)
     error: Mapped[dict[str, Any] | None] = mapped_column(JsonType, nullable=True)
+    # restart safety (migration 0002)
+    idempotency_key: Mapped[str | None] = mapped_column(String(128), index=True, nullable=True)
+    cancel_requested: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    durable: Mapped[dict[str, Any] | None] = mapped_column(JsonType, nullable=True)
+    interruption: Mapped[dict[str, Any] | None] = mapped_column(JsonType, nullable=True)
+    restarted_from: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = _ts()
     updated_at: Mapped[datetime] = _ts()
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -82,6 +89,9 @@ class PlanRow(Base):
     summary: Mapped[str] = mapped_column(Text, default="")
     assumptions: Mapped[list[Any]] = mapped_column(JsonType, default=list)
     success_criteria: Mapped[list[Any]] = mapped_column(JsonType, default=list)
+    # needed to continue a task in a new process (migration 0002)
+    goal: Mapped[dict[str, Any] | None] = mapped_column(JsonType, nullable=True)
+    answer_template: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = _ts()
 
 
@@ -129,6 +139,8 @@ class ToolCallRow(Base):
     step_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
     tool: Mapped[str] = mapped_column(String(100), index=True)
     args: Mapped[dict[str, Any]] = mapped_column(JsonType, default=dict)  # redacted
+    # hash of the tool and its original arguments: recognises an action after a restart (migration 0002)
+    fingerprint: Mapped[str | None] = mapped_column(String(160), nullable=True)
     rationale: Mapped[str] = mapped_column(Text, default="")
     assessment: Mapped[dict[str, Any] | None] = mapped_column(JsonType, nullable=True)
     decision: Mapped[str] = mapped_column(String(24), default="")
@@ -180,6 +192,7 @@ class ApprovalRow(Base):
     task_id: Mapped[str] = mapped_column(ForeignKey("tasks.id", ondelete="CASCADE"), index=True)
     step_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
     tool_call_id: Mapped[str] = mapped_column(String(64))
+    fingerprint: Mapped[str | None] = mapped_column(String(160), nullable=True)  # migration 0003
     tool: Mapped[str] = mapped_column(String(100))
     action: Mapped[str] = mapped_column(Text)
     reason: Mapped[str] = mapped_column(Text)

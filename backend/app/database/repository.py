@@ -12,8 +12,10 @@ from app.database import models as m
 from app.models.approval import ApprovalRequest
 from app.models.enums import ApprovalScope, ApprovalStatus, EventType, RiskLevel, TaskStatus
 from app.models.events import Correlation, ExecutionEvent
+from app.models.goal import GoalSpec
 from app.models.observation import Observation
 from app.models.plan import Plan, PlanStep
+from app.models.recovery import DurableState, Interruption
 from app.models.task import Task, TaskResult, UsageStats
 from app.models.tool import RiskAssessment, ToolCall, ToolResult
 from app.models.verification import VerificationResult
@@ -103,6 +105,11 @@ class SqlRepository:
             row.usage = _j(task.usage)
             row.result = _j(task.result) if task.result else None
             row.error = _j(task.result.error) if task.result and task.result.error else None
+            row.idempotency_key = task.idempotency_key
+            row.cancel_requested = task.cancel_requested
+            row.durable = _j(task.durable) if task.durable else None
+            row.interruption = _j(task.interruption) if task.interruption else None
+            row.restarted_from = task.restarted_from
             row.updated_at = task.updated_at
             row.started_at = task.started_at
             row.finished_at = task.finished_at
@@ -119,6 +126,8 @@ class SqlRepository:
         row.summary = plan.summary
         row.assumptions = list(plan.assumptions)
         row.success_criteria = [_j(c) for c in plan.success_criteria]
+        row.goal = _j(plan.goal) if plan.goal else None
+        row.answer_template = plan.answer_template
         await s.flush()
         for seq, step in enumerate(plan.steps):
             sid = f"{plan.id}:{step.id}"
@@ -187,6 +196,8 @@ class SqlRepository:
                     id=plan_row.id, task_id=task_id, version=plan_row.version, summary=plan_row.summary,
                     assumptions=list(plan_row.assumptions or []),
                     success_criteria=plan_row.success_criteria or [],
+                    goal=GoalSpec.model_validate(plan_row.goal) if plan_row.goal else None,
+                    answer_template=plan_row.answer_template,
                     steps=[self._step_from_row(r) for r in step_rows], created_at=_aware(plan_row.created_at) or utcnow(),
                 )  # fmt: skip
             return task
@@ -208,6 +219,10 @@ class SqlRepository:
             status=TaskStatus(r.status), paused=r.paused, current_step_id=r.current_step_id, current_tool=r.current_tool,
             current_application=r.current_application, usage=UsageStats.model_validate(r.usage or {}),
             result=TaskResult.model_validate(r.result) if r.result else None,
+            idempotency_key=r.idempotency_key, cancel_requested=bool(r.cancel_requested),
+            durable=DurableState.model_validate(r.durable) if r.durable else None,
+            interruption=Interruption.model_validate(r.interruption) if r.interruption else None,
+            restarted_from=r.restarted_from,
             created_at=_aware(r.created_at) or utcnow(), updated_at=_aware(r.updated_at) or utcnow(),
             started_at=_aware(r.started_at), finished_at=_aware(r.finished_at),
         )  # fmt: skip
@@ -269,6 +284,7 @@ class SqlRepository:
                 )
                 s.add(row)
             row.step_key = record.call.step_id
+            row.fingerprint = record.call.fingerprint or row.fingerprint
             row.args = record.call.args
             row.rationale = record.call.rationale
             row.assessment = _j(record.assessment) if record.assessment else None
@@ -295,7 +311,7 @@ class SqlRepository:
             )
             return [
                 ToolCallRecord(
-                    call=ToolCall(id=r.id, tool=r.tool, args=r.args or {}, task_id=task_id, step_id=r.step_key, rationale=r.rationale),
+                    call=ToolCall(id=r.id, tool=r.tool, args=r.args or {}, task_id=task_id, step_id=r.step_key, rationale=r.rationale, fingerprint=r.fingerprint or ""),
                     result=ToolResult.model_validate(r.result) if r.result else None,
                     assessment=RiskAssessment.model_validate(r.assessment) if r.assessment else None,
                     decision=r.decision, decision_reason=r.decision_reason, created_at=_aware(r.created_at) or utcnow(),
@@ -360,6 +376,7 @@ class SqlRepository:
                 )
                 s.add(row)
             row.step_key = req.step_id
+            row.fingerprint = req.fingerprint or None
             row.action, row.reason, row.resource = req.action, req.reason, req.resource
             row.risk = int(req.risk)
             row.risk_explanation = req.risk_explanation
@@ -378,6 +395,7 @@ class SqlRepository:
     def _approval(r: m.ApprovalRow) -> ApprovalRequest:
         return ApprovalRequest(
             id=r.id, task_id=r.task_id, step_id=r.step_key, tool_call_id=r.tool_call_id, tool=r.tool, action=r.action,
+            fingerprint=r.fingerprint or "",
             reason=r.reason, resource=r.resource, risk=RiskLevel(r.risk), risk_explanation=list(r.risk_explanation or []),
             arguments=r.arguments or {}, allowed_scopes=[ApprovalScope(x) for x in (r.allowed_scopes or [])],
             tainted=r.tainted, category=r.category, status=ApprovalStatus(r.status),

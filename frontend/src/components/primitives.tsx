@@ -3,7 +3,7 @@ import { RISK_LABEL, type RiskLevel, type TaskStatus } from "../types/api";
 
 export function StatusBadge({ status }: { status: TaskStatus }) {
   const tone =
-    status === "COMPLETED" ? "ok" : status === "FAILED" || status === "TIMED_OUT" ? "err" : status === "WAITING_APPROVAL" || status === "RECOVERING" || status === "CANCELLED" || status === "PAUSED" ? "warn" : "";
+    status === "COMPLETED" ? "ok" : status === "FAILED" || status === "TIMED_OUT" ? "err" : status === "WAITING_APPROVAL" || status === "RECOVERING" || status === "CANCELLED" || status === "PAUSED" || status === "INTERRUPTED" ? "warn" : "";
   return <span className={`badge ${tone}`}>{status.replace("_", " ")}</span>;
 }
 

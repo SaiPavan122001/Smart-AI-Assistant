@@ -9,6 +9,77 @@ This is a single-user system: one person, one Windows machine, one task at a tim
 multi-tenant, distributed, horizontally scalable, highly available or internet-scale, and it is not claimed to be production-ready
 beyond that single-user scope. Checkpoint document: [docs/releases/v0.1.0-single-user-core.md](docs/releases/v0.1.0-single-user-core.md).
 
+## Production-reliability roadmap (branch `phase/production-reliability-roadmap`, not merged, not tagged)
+
+Started from the NEXT-A head `a300c2a`. Stages and their status: [PHASE_PLAN.md](PHASE_PLAN.md). The v0.1.0 record further down is
+unchanged and remains the release checkpoint. Nothing here is called production-ready.
+
+### NEXT-B — restart-safe task execution: implemented, deterministically validated
+
+| Capability | State |
+|---|---|
+| An unfinished task becomes `INTERRUPTED` at startup; nothing resumes by itself; resume / restart / cancel are explicit | deterministic tests, incl. a really killed process |
+| Write-ahead record of every side-effecting call; in-flight actions classified as safe to retry, confirmed done, confirmed not done or uncertain | deterministic tests |
+| Completed steps are kept; completed actions of the interrupted step are replayed, not executed again | deterministic tests (execution counts) |
+| An uncertain action needs a new, once-only approval, above policy, trusted operations and grants | deterministic tests |
+| Pending approvals and task-scoped grants are void after a restart; refusals, cancel and STOP are persisted and honoured | deterministic tests |
+| Migration `0002` (nullable columns only); rows from `0001` survive; tasks without stored step outputs can be restarted or cancelled, not resumed | SQLite and PostgreSQL |
+| `GET /tasks/{id}/recovery`, `POST /tasks/{id}/recover`; dashboard recovery panel | API tests, frontend unit tests |
+
+| Check | Result |
+|---|---|
+| Backend tests, every file except two NEXT-C drafts | **829 passed, 4 skipped** (NEXT-A: 762 / 2), run as nine sequential groups |
+| `ruff`, strict `mypy` (146 files), evals | clean · clean · 17/17, 46 LLM calls (unchanged), 0 violations |
+| Frontend `eslint`, `tsc`, Vitest, build, Playwright | clean · clean · 54 passed · OK · 8 passed |
+| All-in-one `scripts\check.ps1` | **not completed**: stopped by low memory at 17 % with no failure; replaced by the sequential groups |
+| Live model (`llm-check`, NA1–NA5, 18-scenario gate, live interruption) | **not run**: `403 Key limit exceeded (total limit)` |
+
+Commands, counts per group and what was left out: [docs/restart-recovery.md](docs/restart-recovery.md#validation-record-2026-10-10).
+
+Known limits specific to NEXT-B: no exactly-once guarantee for side effects; reconciliation covers file moves, copies, deletes and
+browser page loads only, every other in-flight side effect costs one approval after a restart; refusing that approval ends the task
+as `DENIED`; the browser session is not restored (pages are reopened, with a revised plan if needed); an interrupted adaptive step
+starts again; recovery has not been exercised with a live model.
+
+### NEXT-C — security and permission hardening: implemented, deterministically validated
+
+Fixed, each with a negative test that fails without the fix (12 of 12 mutations caught):
+
+| Finding | Fix |
+|---|---|
+| `fs_search` walked a junction inside an allowed folder and returned the names of files outside it; `fs_find`, `fs_list`, folder copy and two internal walks had the same junction-blind traversal | one confined walk (`security/paths.py`); symlinks, junctions and mount points are never entered or listed |
+| A content search could probe credential-looking files that `fs_read` refuses | every match is checked against the path policy before it is read or reported |
+| A Windows path named by injected text was not matched to the tool call using it (JSON doubles backslashes), so the provenance block did not fire | one normal form for path text |
+| A failing tool's error text reached the timeline and the `tool_calls` table unredacted; API error bodies echoed input | event messages, audit reasons and error bodies are redacted |
+| A command that left a child running was reported only when its timeout expired, and the child outlived it | Windows Job Object around the command; the runner waits for process exit |
+| An approved call ran even if it would by then do something else (overwrite a file that had appeared) | approval bound to the exact call and re-assessed after the wait (`approval_stale`) |
+| `serve --host 0.0.0.0` was accepted; the WebSocket accepted the token in the URL | network bind refused unless explicitly enabled with a chosen token; subprotocol token only |
+| Drive-relative paths (`C:name`) and `CONIN$` / `CONOUT$` / superscript COM-LPT names were accepted | refused |
+
+Also added: one permission per tool, checked against the registry and the docs; a task grant limited to the approved risk; injection
+tests per content source (document, PDF, several documents, file name, search result, command output, failed command output,
+screenshot text, tool response); STOP ends planning, recovery and re-planning; migration `0003` (approval fingerprint, nullable).
+
+| Check (2026-10-10, run one group at a time, each exit 0) | Result |
+|---|---|
+| `ruff format --check`, `ruff check`, strict `mypy` (148 files) | clean (221 files) · clean · 0 issues |
+| `pytest tests/security` | 239 passed (NEXT-B: 113) |
+| `pytest tests/unit` | 532 passed, 1 skipped |
+| `pytest tests/e2e` | 107 passed |
+| Storage and migrations (SQLite, PostgreSQL, killed process, `0001 → 0003` with existing rows) | 33 passed, 2 skipped |
+| API (`test_api.py`, `test_api_recovery.py`, `test_api_exposure.py`) | 27 passed |
+| `test_uia_windows.py` · `test_startup.py` · `test_browser.py` | 3 passed, 1 skipped · 5 passed · 18 passed |
+| **Backend total** | **964 passed, 4 skipped, 0 failed**, every test file |
+| `python -m evals.run` | 17/17, 46 LLM calls (unchanged), 0 violations, thresholds met |
+| Frontend `eslint`, `tsc`, Vitest, build | clean · clean · 54 passed · OK |
+| Playwright UI E2E | 8 passed on the second run. The first run had 7 passed and 1 failed: the login page did not render within 60 s in one test, before any application step. Not reproduced; recorded as a flaky page load on this 8 GB machine, not investigated further |
+| All-in-one `scripts\check.ps1` | not run (memory); the groups above are its parts |
+| Live model | not run: `llm-check` last returned `403 Key limit exceeded (total limit)` |
+
+Residual risks are numbered in [SECURITY.md](SECURITY.md#known-limitations-please-read): check-then-use window on paths, hard links
+not detected, a "for this task" approval is broad, the Job Object is not a sandbox, the emergency stop is not persisted across a
+restart, heuristic injection detection. No penetration test and no external review has been done.
+
 ## NEXT-A (branch `phase/next-a-complex-single-user-workflows`, not merged, not tagged)
 
 **Status: READY FOR MORE SINGLE-USER TESTING** — implemented and deterministically tested; live validation incomplete.
@@ -133,7 +204,8 @@ Secret audit: no API key, token or private key in the working tree or in Git his
 3. Adaptive steps usually cost one model call per action with this model (dynamic page 8 calls, blocked-search fallback 14).
 4. Official-source verification proves the result is on the stated domain; the domain comes from the request, configuration or planner.
 5. Browser checks stop polling after 3 s of unchanged page state.
-6. A running or paused task does not survive a process restart (it is marked FAILED).
+6. At v0.1.0 a running or paused task did not survive a process restart (it was marked FAILED). On the roadmap branch it becomes
+   `INTERRUPTED` and can be resumed, restarted or cancelled (NEXT-B above).
 7. Desktop automation is Windows-only; Electron apps and other sparse UI Automation trees are untested; stale-reference recovery was
    exercised by deterministic tests, not by a live run.
 8. Brave and Tavily search providers are tested against mocks; DuckDuckGo is best effort.

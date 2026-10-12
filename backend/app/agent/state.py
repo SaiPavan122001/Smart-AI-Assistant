@@ -11,17 +11,19 @@ from app.models.enums import EventType, TaskStatus
 from app.models.events import Correlation
 from app.models.goal import GoalSpec, RequirementResult
 from app.models.plan import Plan
+from app.models.recovery import DurableState
 from app.models.task import Task
 from app.observability.usage import UsageMeter
 from app.perception.cache import ObservationCache
 from app.permissions.engine import TaskGrants
-from app.recovery.engine import RecoveryAttempt
+from app.recovery.engine import RecoveryAttempt, Strategy
 from app.security.injection import InjectionGuard
 from app.state.events import EventBus
 from app.state.machine import transition
 from app.state.repository import Repository
 from app.tools.loop_guard import LoopGuard
 from app.utils.control import CancelToken, PauseGate
+from app.utils.errors import ErrorCode
 from app.utils.ids import utcnow
 
 
@@ -75,6 +77,9 @@ class RunState:
         ] = []  # newest final-verification results (for failure reports)
         self._status_before_wait: TaskStatus | None = None
         self._status_before_pause: TaskStatus | None = None
+        self.resumes = 0  # times this task was continued after an interruption
+        # Side-effecting calls of a step that completed before an interruption (shown to the model).
+        self.done_before: dict[str, list[str]] = {}
         self._pause_lock = handle.pause_lock
         handle.run_state = self
         handle.pause.on_park = self.enter_pause
@@ -181,10 +186,57 @@ class RunState:
             return self.task.status
 
     async def save(self) -> None:
+        """Persist the task, its plan and steps, and the durable runner state in ONE transaction."""
         self.task.updated_at = utcnow()
         self.task.plan = self.plan
         self.task.usage = self.handle.meter.usage
+        self.task.durable = self.durable()
         await self._repo.save_task(self.task)
+
+    # ------------------------------------------------------------------ restart safety
+    def durable(self) -> DurableState:
+        return DurableState(
+            step_data=self.step_data,
+            step_answers=self.step_answers,
+            artifacts=self.artifacts,
+            replans_used=self.replans_used,
+            replanned_codes=sorted(str(getattr(c, "value", c)) for c in self.replanned_codes),
+            history=[
+                {
+                    "step_id": h.step_id,
+                    "strategy": h.strategy.value,
+                    "reason": h.reason,
+                    "error_code": h.error_code,
+                    "phase": h.phase,
+                }
+                for h in self.history[-100:]
+            ],  # fmt: skip
+            denied=sorted(self.handle.denied),
+            status_before_pause=self._status_before_pause,
+            resumes=self.resumes,
+        )
+
+    def restore(self) -> None:
+        """Load what a previous process recorded for this task (plan, outputs, recovery history,
+        refusals). Task-scoped approval grants are deliberately NOT restored: after a restart the
+        user is asked again."""
+        d = self.task.durable or DurableState()
+        self.plan = self.task.plan
+        self.goal = self.plan.goal if self.plan else None
+        self.step_data = dict(d.step_data)
+        self.step_answers = dict(d.step_answers)
+        self.artifacts = dict(d.artifacts)
+        self.replans_used = d.replans_used
+        self.replanned_codes = {ErrorCode(c) for c in d.replanned_codes}
+        self.history = [
+            RecoveryAttempt(
+                h["step_id"], Strategy(h["strategy"]), h.get("reason", ""),
+                h.get("error_code", ""), h.get("phase", "action"),
+            )
+            for h in d.history
+        ]  # fmt: skip
+        self.handle.denied.update(d.denied)
+        self.resumes = d.resumes + 1
 
 
 def _app_label(data: dict[str, Any]) -> str | None:
