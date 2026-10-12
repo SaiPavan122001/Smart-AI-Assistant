@@ -145,6 +145,14 @@ export function reduceEvent(state: TaskView, ev: ExecutionEvent): TaskView {
       s.interruption = null;
       s.timeline = upsert(s.timeline, item(ev, `resuming:${ev.seq}`, "info", "Continuing after the interruption", ev.message));
       break;
+    // The user asked to undo a finished task's file changes. The task's own outcome does not change.
+    case "rollback_started":
+      s.timeline = upsert(s.timeline, item(ev, `rollback:${ev.seq}`, "running", "Rolling back file changes", ev.message));
+      break;
+    case "rollback_completed":
+      s.timeline = s.timeline.map((t) => (t.key.startsWith("rollback:") ? { ...t, icon: "done" as const } : t));
+      s.timeline = upsert(s.timeline, item(ev, `rolledback:${ev.seq}`, d.open ? "warn" : "done", "Rollback finished", ev.message));
+      break;
     case "planning_started":
       s.timeline = upsert(s.timeline, item(ev, `planning:${ev.seq}`, "running", ev.message || "Planning"));
       break;

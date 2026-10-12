@@ -35,6 +35,7 @@ from app.state.memory import InMemoryRepository
 from app.state.repository import Repository
 from app.state.task_logs import TaskLogSink
 from app.tools.context import ToolServices
+from app.tools.filesystem.journal import FileJournal
 from app.tools.registry import ToolRegistry
 from app.tools.router import ToolRouter
 from app.tools.vision.service import LLMVisionProvider, VisionService
@@ -245,6 +246,7 @@ def build_container(
         desktop=desktop,
         vision=vision,
         search=search,
+        journal=FileJournal(repo, settings.data_dir / "journal"),
     )
     registry = build_registry(
         include_browser=browser is not None,

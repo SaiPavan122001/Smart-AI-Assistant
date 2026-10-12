@@ -114,7 +114,7 @@ def build(port: int, root: Path) -> Any:
         f"http://127.0.0.1:{p}" for p in (5173, 5174)
     ]
     settings = Settings(
-        env="test", log_json=False, log_level="WARNING",
+        env="test", log_json=False, log_level="WARNING", data_dir=root / "data",
         filesystem=FilesystemSettings(allowed_roots=[dirs["Desktop"], dirs["Downloads"], dirs["Documents"]], workspace=dirs["workspace"]),
         browser=BrowserSettings(allow_private_network=True),
         limits=LimitSettings(approval_timeout_s=120, max_execution_seconds=300),

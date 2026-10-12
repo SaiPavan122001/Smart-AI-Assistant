@@ -15,6 +15,7 @@ from app.models.enums import (
     TaskStatus,
 )
 from app.models.events import Correlation, ExecutionEvent
+from app.models.journal import JournalEntry, JournalOp, JournalState
 from app.models.observation import Observation
 from app.models.plan import Plan, PlanStep
 from app.models.task import Task, TaskResult, UsageStats
@@ -220,3 +221,29 @@ async def test_actions_logs_decisions_and_policy(repo: Any) -> None:
     assert restored.tool_overrides == {"fs_delete": Action.DENY}
     assert restored.risk_actions[RiskLevel.HIGH] == Action.ASK
     assert await repo.ping()
+
+
+async def test_file_journal_is_upserted_and_listed_in_order(repo: Any) -> None:
+    task, other = make_task(), make_task()
+    await repo.save_task(task)
+    await repo.save_task(other)
+    later = JournalEntry(task_id=task.id, seq=2, op=JournalOp.MOVE, path="C:/d/b.txt", src="C:/s/b.txt",
+                         fingerprint="sha256:ab", backup="C:/data/journal/b.txt", backup_fingerprint="sha256:cd")  # fmt: skip
+    first = JournalEntry(task_id=task.id, seq=1, op=JournalOp.CREATE_DIR, kind="dir", path="C:/d")
+    await repo.save_journal_entry(later)
+    await repo.save_journal_entry(first)
+    await repo.save_journal_entry(
+        JournalEntry(task_id=other.id, seq=1, op=JournalOp.RECYCLE, path="C:/x")
+    )
+    later.state, later.detail = JournalState.APPLIED, "done"
+    await repo.save_journal_entry(later)  # the same entry again: updated, not duplicated
+
+    listed = await repo.list_journal(task.id)
+    assert [e.id for e in listed] == [first.id, later.id]
+    got = listed[1]
+    assert (got.op, got.state, got.kind, got.src, got.fingerprint, got.backup, got.backup_fingerprint, got.detail) == (
+        JournalOp.MOVE, JournalState.APPLIED, "file", "C:/s/b.txt", "sha256:ab", "C:/data/journal/b.txt", "sha256:cd", "done",
+    )  # fmt: skip
+    assert listed[0].kind == "dir" and listed[0].state is JournalState.PENDING
+    assert [e.op for e in await repo.list_journal(other.id)] == [JournalOp.RECYCLE]
+    assert await repo.list_journal("task_unknown") == []

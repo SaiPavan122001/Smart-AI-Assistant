@@ -152,6 +152,28 @@ class ToolCallRow(Base):
     created_at: Mapped[datetime] = _ts()
 
 
+class FileJournalRow(Base):
+    """One change a task made to a file or folder, and what is needed to undo it (migration 0004)."""
+
+    __tablename__ = "file_journal"
+    __table_args__ = (UniqueConstraint("task_id", "seq", name="uq_file_journal_task_seq"),)
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    task_id: Mapped[str] = mapped_column(ForeignKey("tasks.id", ondelete="CASCADE"), index=True)
+    tool_call_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    seq: Mapped[int] = mapped_column(Integer)
+    op: Mapped[str] = mapped_column(String(24))
+    state: Mapped[str] = mapped_column(String(16))
+    kind: Mapped[str] = mapped_column(String(8))
+    path: Mapped[str] = mapped_column(Text)
+    src: Mapped[str | None] = mapped_column(Text, nullable=True)
+    fingerprint: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    backup: Mapped[str | None] = mapped_column(Text, nullable=True)
+    backup_fingerprint: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    detail: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = _ts()
+    updated_at: Mapped[datetime] = _ts()
+
+
 class ObservationRow(Base):
     __tablename__ = "observations"
     id: Mapped[str] = mapped_column(String(64), primary_key=True)

@@ -74,6 +74,7 @@ def api(tmp_path: Path) -> Iterator[Api]:
         d.mkdir()
     settings = Settings(
         env="test",
+        data_dir=tmp_path / "data",
         filesystem=FilesystemSettings(allowed_roots=[desktop, downloads, documents], workspace=ws),
         limits=LimitSettings(approval_timeout_s=30),
         security=SecuritySettings(
@@ -198,7 +199,7 @@ def test_task_runs_to_completion_with_timeline(api: Api) -> None:
 
 def test_no_llm_configured_fails_honestly(tmp_path: Path) -> None:
     settings = Settings(
-        env="test", llm=LLMSettings(provider="none"),
+        env="test", llm=LLMSettings(provider="none"), data_dir=tmp_path / "data",
         filesystem=FilesystemSettings(allowed_roots=[tmp_path], workspace=tmp_path / "w"),
         security=SecuritySettings(api_token=TOKEN, allowed_hosts=["testserver"]), log_json=False,
     )  # fmt: skip

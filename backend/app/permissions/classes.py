@@ -18,6 +18,7 @@ class Permission(StrEnum):
     MOVE = "move"
     COPY = "copy"
     DELETE = "delete"
+    UNDO = "undo"  # reverse a journalled change of the task (rollback the user started only)
     EXECUTE = "execute"  # run a program through the controlled terminal
     QUERY_ENVIRONMENT = "query_environment"  # read-only facts about the machine or a repository
     BROWSER_READ = "browser_read"
@@ -55,6 +56,7 @@ TOOL_PERMISSIONS: dict[str, Permission] = {
     "fs_organize": Permission.MOVE,  # moves or copies a list of files; never overwrites or deletes
     "fs_copy": Permission.COPY,
     "fs_delete": Permission.DELETE,
+    "fs_undo": Permission.UNDO,
     "terminal_execute_safe": Permission.EXECUTE,
     "terminal_query": Permission.QUERY_ENVIRONMENT,
     "terminal_environment": Permission.QUERY_ENVIRONMENT,

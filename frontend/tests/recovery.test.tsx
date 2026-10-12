@@ -139,3 +139,24 @@ describe("RecoveryPanel", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Cancel task" })).toBeEnabled());
   });
 });
+
+describe("rollback of a finished task (NEXT-D)", () => {
+  it("shows the rollback in the timeline without changing the task's outcome", () => {
+    let v = buildTaskView("task_1", happyPath());
+    const status = v.status;
+    v = reduceEvent(v, ev("rollback_started", { message: "Rollback requested: 3 change(s) to look at", data: { open: 3 } }));
+    expect(v.timeline.at(-1)?.title).toBe("Rolling back file changes");
+    expect(v.timeline.at(-1)?.icon).toBe("running");
+    v = reduceEvent(v, ev("rollback_completed", { message: "Rollback finished: 2 undone, 1 left as they are", data: { open: 0 } }));
+    expect(v.status).toBe(status);
+    expect(v.timeline.filter((t) => t.title === "Rolling back file changes")[0]?.icon).toBe("done");
+    expect(v.timeline.at(-1)).toMatchObject({ title: "Rollback finished", icon: "done" });
+  });
+
+  it("marks a rollback that left changes open as needing attention", () => {
+    let v = buildTaskView("task_1", happyPath());
+    v = reduceEvent(v, ev("rollback_started", { data: { open: 2 } }));
+    v = reduceEvent(v, ev("rollback_completed", { message: "Rollback stopped", data: { open: 1 } }));
+    expect(v.timeline.at(-1)?.icon).toBe("warn");
+  });
+});

@@ -173,3 +173,5 @@ class EventType(StrEnum):
     )
     TASK_INTERRUPTED = "task_interrupted"  # found unfinished at startup; waits for the user
     TASK_RESUMING = "task_resuming"  # the user chose to continue an interrupted task
+    ROLLBACK_STARTED = "rollback_started"  # the user asked to undo a finished task's file changes
+    ROLLBACK_COMPLETED = "rollback_completed"  # finished or stopped; counts per journal state

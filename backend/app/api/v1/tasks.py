@@ -20,6 +20,7 @@ from app.models.enums import TaskStatus
 from app.models.events import ExecutionEvent
 from app.models.task import Task
 from app.models.verification import VerificationResult
+from app.orchestration.rollback import JournalView, RollbackResult
 from app.state.repository import (
     AgentActionRecord,
     LogEntry,
@@ -118,6 +119,22 @@ async def recover_task(task_id: str, body: RecoverRequest, c: ContainerDep) -> T
     _require_active(await _load(c, task_id))
     await c.runtime.cancel(task_id)
     return TaskSummary.from_task(await _load(c, task_id))
+
+
+@router.get("/{task_id}/journal", response_model=JournalView)
+async def task_journal(task_id: str, c: ContainerDep) -> JournalView:
+    """The file changes the task made, in order, with the state of each (applied, undone, ...) and
+    whether a rollback is possible now. Read-only."""
+    return await c.runtime.journal(task_id)
+
+
+@router.post("/{task_id}/rollback", response_model=RollbackResult)
+async def rollback_task(task_id: str, c: ContainerDep) -> RollbackResult:
+    """Undo the file changes of a finished task, newest first. Only on this explicit request.
+
+    Each change is undone only if the item is still exactly as the agent left it; anything else is
+    left alone and reported. Calling it again continues with what is still open."""
+    return await c.runtime.rollback(task_id)
 
 
 @router.get("/{task_id}/events", response_model=list[ExecutionEvent])

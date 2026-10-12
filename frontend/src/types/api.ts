@@ -248,7 +248,7 @@ export type EventType =
   | "usage_updated" | "status_changed" | "pause_requested" | "pause_completed" | "resume_requested" | "resume_completed"
   | "task_paused" | "task_resumed" | "task_completed" | "task_failed"
   | "task_cancelled" | "task_timed_out" | "limit_reached" | "kill_switch" | "checkpoint_saved"
-  | "task_interrupted" | "task_resuming";
+  | "task_interrupted" | "task_resuming" | "rollback_started" | "rollback_completed";
 
 export interface Correlation {
   request_id?: string | null;

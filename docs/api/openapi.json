@@ -695,7 +695,9 @@
           "kill_switch",
           "checkpoint_saved",
           "task_interrupted",
-          "task_resuming"
+          "task_resuming",
+          "rollback_started",
+          "rollback_completed"
         ],
         "title": "EventType",
         "type": "string"
@@ -968,6 +970,193 @@
           "status_at_interruption"
         ],
         "title": "Interruption",
+        "type": "object"
+      },
+      "JournalEntry": {
+        "properties": {
+          "backup": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Backup"
+          },
+          "backup_fingerprint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Backup Fingerprint"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "detail": {
+            "default": "",
+            "title": "Detail",
+            "type": "string"
+          },
+          "fingerprint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fingerprint"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "default": "file",
+            "enum": [
+              "file",
+              "dir"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "op": {
+            "$ref": "#/components/schemas/JournalOp"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "seq": {
+            "default": 0,
+            "title": "Seq",
+            "type": "integer"
+          },
+          "src": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Src"
+          },
+          "state": {
+            "$ref": "#/components/schemas/JournalState",
+            "default": "pending"
+          },
+          "task_id": {
+            "title": "Task Id",
+            "type": "string"
+          },
+          "tool_call_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tool Call Id"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_id",
+          "op",
+          "path"
+        ],
+        "title": "JournalEntry",
+        "type": "object"
+      },
+      "JournalOp": {
+        "enum": [
+          "create_file",
+          "replace_file",
+          "create_dir",
+          "move",
+          "copy",
+          "recycle"
+        ],
+        "title": "JournalOp",
+        "type": "string"
+      },
+      "JournalState": {
+        "enum": [
+          "pending",
+          "applied",
+          "failed",
+          "undoing",
+          "undone",
+          "skipped",
+          "manual"
+        ],
+        "title": "JournalState",
+        "type": "string"
+      },
+      "JournalView": {
+        "description": "A task's file journal and what a rollback could still do with it.",
+        "properties": {
+          "can_roll_back": {
+            "title": "Can Roll Back",
+            "type": "boolean"
+          },
+          "counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "description": "number of entries per state",
+            "title": "Counts",
+            "type": "object"
+          },
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/JournalEntry"
+            },
+            "title": "Entries",
+            "type": "array"
+          },
+          "open": {
+            "description": "entries a rollback would still look at",
+            "title": "Open",
+            "type": "integer"
+          },
+          "reason": {
+            "default": "",
+            "description": "why a rollback is not possible now",
+            "title": "Reason",
+            "type": "string"
+          },
+          "task_id": {
+            "title": "Task Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_id",
+          "entries",
+          "counts",
+          "open",
+          "can_roll_back"
+        ],
+        "title": "JournalView",
         "type": "object"
       },
       "LogEntry": {
@@ -1673,6 +1862,36 @@
         ],
         "title": "RiskLevel",
         "type": "integer"
+      },
+      "RollbackResult": {
+        "properties": {
+          "attempted": {
+            "title": "Attempted",
+            "type": "integer"
+          },
+          "errors": {
+            "items": {
+              "$ref": "#/components/schemas/ErrorInfo"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "stopped": {
+            "default": "",
+            "description": "why the rollback stopped before the end",
+            "title": "Stopped",
+            "type": "string"
+          },
+          "view": {
+            "$ref": "#/components/schemas/JournalView"
+          }
+        },
+        "required": [
+          "view",
+          "attempted"
+        ],
+        "title": "RollbackResult",
+        "type": "object"
       },
       "StepKind": {
         "enum": [
@@ -3859,6 +4078,49 @@
         ]
       }
     },
+    "/api/v1/tasks/{task_id}/journal": {
+      "get": {
+        "description": "The file changes the task made, in order, with the state of each (applied, undone, ...) and\nwhether a rollback is possible now. Read-only.",
+        "operationId": "task_journal_api_v1_tasks__task_id__journal_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "title": "Task Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JournalView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Task Journal",
+        "tags": [
+          "tasks"
+        ]
+      }
+    },
     "/api/v1/tasks/{task_id}/logs": {
       "get": {
         "operationId": "task_logs_api_v1_tasks__task_id__logs_get",
@@ -4149,6 +4411,49 @@
           }
         },
         "summary": "Resume Task",
+        "tags": [
+          "tasks"
+        ]
+      }
+    },
+    "/api/v1/tasks/{task_id}/rollback": {
+      "post": {
+        "description": "Undo the file changes of a finished task, newest first. Only on this explicit request.\n\nEach change is undone only if the item is still exactly as the agent left it; anything else is\nleft alone and reported. Calling it again continues with what is still open.",
+        "operationId": "rollback_task_api_v1_tasks__task_id__rollback_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "title": "Task Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RollbackResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Rollback Task",
         "tags": [
           "tasks"
         ]

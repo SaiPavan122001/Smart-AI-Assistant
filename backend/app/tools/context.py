@@ -25,6 +25,7 @@ if TYPE_CHECKING:
     from app.search.router import SearchRouter
     from app.tools.browser.manager import BrowserManager
     from app.tools.desktop.service import DesktopService
+    from app.tools.filesystem.journal import FileJournal
     from app.tools.vision.service import VisionService
 
 
@@ -39,6 +40,8 @@ class ToolServices:
     desktop: DesktopService | None = None
     vision: VisionService | None = None
     search: SearchRouter | None = None
+    # Every change the filesystem tools make is journalled here first (NEXT-D). Without it they change nothing.
+    journal: FileJournal | None = None
 
 
 Emit = Callable[..., Awaitable[None]]

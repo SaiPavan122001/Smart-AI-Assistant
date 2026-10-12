@@ -19,10 +19,11 @@ Every operation the agent can perform is one of these typed tools; the model nev
 | `fs_read` | low | policy | 30s | yes | yes | yes |
 | `fs_read_many` | low | policy | 90s | yes | yes | yes |
 | `fs_search` | low | policy | 60s | yes | yes | yes |
+| `fs_undo` | medium | policy | 30s | no | yes | no |
 
 ### `fs_copy`
 
-Copy a file/folder within allowed roots. Fails if the destination exists unless overwrite=true.
+Copy a file/folder within allowed roots. Fails if the destination exists unless overwrite=true (the existing item is replaced, not merged, and kept so the change can be undone).
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
@@ -98,7 +99,7 @@ Output `data`: `path:string, entries:[{name:string, type:string, size?:integer, 
 
 ### `fs_move`
 
-Move or rename a file/folder within allowed roots. Fails if the destination exists unless overwrite=true.
+Move or rename a file/folder within allowed roots. Fails if the destination exists unless overwrite=true (what is replaced is kept, so the change can be undone).
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
@@ -163,6 +164,16 @@ Search for files by name pattern, extension and/or text content under an allowed
 | `max_results` | integer | no |  |
 
 Output `data`: `root:string, matches:[{name:string, type:string, size?:integer, modified?:string, path:string}], scanned:integer, truncated:boolean`
+
+### `fs_undo`
+
+Undo one file change this task made, only if the item is still exactly as the agent left it. Used by a rollback the user requested; not available to plans.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `entry_id` | string | yes | Id of a file-journal entry of this task |
+
+Output `data`: `entry_id:string, op:string, path:string, state:string, detail:string`
 
 ## Terminal
 

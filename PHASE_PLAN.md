@@ -68,10 +68,10 @@ separately after its tests pass. The phase letters after NEXT-A were renumbered 
 |---|---|---|---|
 | NEXT-B | Restart-safe task execution and durable recovery | ✅ deterministic (829 backend tests, evals, frontend, Playwright, run as sequential groups); no live-model run | [docs/restart-recovery.md](docs/restart-recovery.md) |
 | NEXT-C | Security and permission hardening | ✅ deterministic (964 backend tests, evals, frontend, Playwright, run as sequential groups); residual risks in SECURITY.md | [SECURITY.md](SECURITY.md), decisions C1–C9 |
-| NEXT-D | Transactional file operations, rollback, partial-failure handling | ⏳ | |
+| NEXT-D | Transactional file operations, rollback, partial-failure handling | ✅ deterministic (see the validation record); deletions are not undone, other tools' file writes are not journalled | [docs/file-transactions.md](docs/file-transactions.md), decisions T1–T7 |
 | NEXT-E | Reliable Windows application automation, support matrix | ⏳ | |
 | NEXT-F | Evidence-based evaluation; live validation of NA1–NA5 and the 18-scenario gate | ⏳ deterministic part · ⛔ live part (model key limit) | |
-| NEXT-G | Dashboard usability and task transparency | ◐ recovery panel only (NEXT-B) | |
+| NEXT-G | Dashboard usability and task transparency | ◐ recovery panel (NEXT-B), rollback events on the timeline (NEXT-D) | |
 | NEXT-H | Installable Windows product and diagnostics | ⏳ | |
 
 ### NEXT-B — Restart-safe task execution ✅
@@ -101,13 +101,26 @@ Checkpoint: the audit's findings are fixed, each with a negative test, and the r
   output, screenshot text, tool response); STOP ends planning, recovery and re-planning; migration `0003`.
 * Open: see the numbered limitations in [SECURITY.md](SECURITY.md) (check-then-use window, hard links, broad task grants, no sandbox).
 
+### NEXT-D — Transactional file operations ✅
+
+Checkpoint: every change a filesystem tool makes is journalled before it happens, an overwrite destroys nothing, and a finished task's
+file changes can be rolled back on the user's request, idempotently and resumably.
+
+* `file_journal` (migration `0004`): one entry per change, written `pending` before it, settled from the observed files after it.
+* Staged writes and copies verified before they take a target's place; overwritten items preserved in `<data_dir>/journal/`.
+* `fs_undo` (hidden from plans, rollback only, through the router and the permission engine); `GET /tasks/{id}/journal`,
+  `POST /tasks/{id}/rollback`; `rollback_started` / `rollback_completed` events on the timeline.
+* Fixed: moving or copying an item onto itself with `overwrite=true` deleted it.
+* Open: deletions are not undone (Recycle Bin, reported as `manual`); terminal/browser/desktop file writes are not journalled;
+  backups are not pruned; no dashboard button (NEXT-G). See the limits in [docs/file-transactions.md](docs/file-transactions.md).
+
 ### Stages not started
 
-NEXT-D: action journal, undo with precondition checks, staging and verification, rollback that is idempotent and resumable.
 NEXT-E: tested application-support matrix, focus / stale-window / unexpected-dialog detection, postcondition verification.
 NEXT-F: failure scenarios (restart, unavailable application, network, invalid model output, timeout, ambiguity, injection, forbidden
 and contradictory instructions), outcome metrics, redacted run artifacts; then the live gate.
-NEXT-G: goal and requirements view, plan and clarification, evidence versus explanation, per-requirement results.
+NEXT-G: goal and requirements view, plan and clarification, evidence versus explanation, per-requirement results; a rollback control
+and journal view in the task page (the API exists since NEXT-D).
 NEXT-H: packaging and installation workflow, environment and configuration checks, diagnostics, upgrade and uninstall notes.
 
 ### Later (not started, not part of this roadmap)

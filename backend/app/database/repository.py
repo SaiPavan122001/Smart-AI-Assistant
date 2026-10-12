@@ -13,6 +13,7 @@ from app.models.approval import ApprovalRequest
 from app.models.enums import ApprovalScope, ApprovalStatus, EventType, RiskLevel, TaskStatus
 from app.models.events import Correlation, ExecutionEvent
 from app.models.goal import GoalSpec
+from app.models.journal import JournalEntry, JournalOp, JournalState
 from app.models.observation import Observation
 from app.models.plan import Plan, PlanStep
 from app.models.recovery import DurableState, Interruption
@@ -455,6 +456,52 @@ class SqlRepository:
             )
             return [
                 VerificationResult(id=r.id, task_id=task_id, step_id=r.step_key, kind=r.kind, passed=r.passed, description=r.description, evidence=r.evidence or {}, message=r.message, method=r.method, created_at=_aware(r.created_at) or utcnow())
+                for r in rows
+            ]  # fmt: skip
+
+    # ------------------------------------------------------------------ file journal
+    async def save_journal_entry(self, entry: JournalEntry) -> None:
+        async with self._sessions() as s, s.begin():
+            row = await s.get(m.FileJournalRow, entry.id)
+            if row is None:
+                row = m.FileJournalRow(
+                    id=entry.id, task_id=entry.task_id, created_at=entry.created_at
+                )
+                s.add(row)
+            row.tool_call_id = entry.tool_call_id
+            row.seq = entry.seq
+            row.op = entry.op.value
+            row.state = entry.state.value
+            row.kind = entry.kind
+            row.path = entry.path
+            row.src = entry.src
+            row.fingerprint = entry.fingerprint
+            row.backup = entry.backup
+            row.backup_fingerprint = entry.backup_fingerprint
+            row.detail = entry.detail
+            row.updated_at = entry.updated_at
+
+    async def list_journal(self, task_id: str) -> list[JournalEntry]:
+        async with self._sessions() as s:
+            rows = (
+                (
+                    await s.execute(
+                        select(m.FileJournalRow)
+                        .where(m.FileJournalRow.task_id == task_id)
+                        .order_by(m.FileJournalRow.seq)
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            return [
+                JournalEntry(
+                    id=r.id, task_id=r.task_id, tool_call_id=r.tool_call_id, seq=r.seq, op=JournalOp(r.op),
+                    state=JournalState(r.state), kind="dir" if r.kind == "dir" else "file", path=r.path,
+                    src=r.src, fingerprint=r.fingerprint, backup=r.backup, backup_fingerprint=r.backup_fingerprint,
+                    detail=r.detail, created_at=_aware(r.created_at) or utcnow(),
+                    updated_at=_aware(r.updated_at) or utcnow(),
+                )
                 for r in rows
             ]  # fmt: skip
 

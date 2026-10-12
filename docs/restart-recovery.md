@@ -140,7 +140,7 @@ A refusal survives: a call the user denied stays denied (`DurableState.denied`).
 | Inspect | `GET /tasks/{id}/recovery` | the interruption (re-assessed) and a report of steps done / interrupted / not run |
 | Resume | `POST /tasks/{id}/recover` `resume` | as above; refused while STOP is engaged |
 | Restart | `recover` `restart` | the task ends `CANCELLED`; the same request runs as a new task (`restarted_from`). The new task does not know what the old one did |
-| Cancel | `recover` `cancel` or `POST /tasks/{id}/cancel` | `CANCELLED` with a truthful report; nothing is undone |
+| Cancel | `recover` `cancel` or `POST /tasks/{id}/cancel` | `CANCELLED` with a truthful report; nothing is undone. Its file changes can then be rolled back on request ([file-transactions](file-transactions.md)) |
 
 Sending the same request again while its task is interrupted returns the interrupted task instead of
 starting a second run. An `Idempotency-Key` is honoured across restarts.

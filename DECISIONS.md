@@ -86,6 +86,20 @@ Branch `phase/production-reliability-roadmap`, started from `a300c2a` (NEXT-A). 
 | C8 | An approved command runs inside a Windows Job Object: the tree ends with the call and with the agent; memory and process limits are optional. The runner waits for the process to exit, not for its pipes to close | a child left running by a command kept the output pipe open, so a finished command was reported only when its timeout expired and the child outlived it. A job is lifetime and resource containment, not a sandbox |
 | C9 | Each tool is placed in one permission (`permissions/classes.py`), checked against the registry and the documentation by test; decisions stay per call (risk and category from `assess`) | a new tool cannot be added without being placed; "read" tools are proven read-only |
 
+### NEXT-D — transactional file operations
+
+Details: [docs/file-transactions.md](docs/file-transactions.md).
+
+| # | Decision | Why |
+|---|---|---|
+| T1 | Every change by a filesystem tool is journalled in its own table (`file_journal`, migration 0004) **before** it happens; no journal entry, no change. Without a configured journal the tools change nothing | the write-ahead tool-call record (R2) says an action started, not what it changed or how to take it back. The journal is written by the tools during a call, not with the task row, so it does not belong in `tasks.durable` (R7) |
+| T2 | An entry is settled from the observed filesystem (fingerprints), never from what the code intended: `applied`, `failed`, or `pending` with the reason | a tool that returned without error is not proof that the file is as expected; the same rule as verification (D10, ADR 0011) |
+| T3 | Nothing an overwrite replaces is destroyed: it is preserved in `<data_dir>/journal/<task>/<entry>/` first. `fs_copy` onto an existing folder replaces it instead of merging; a move or copy onto itself is refused | an overwrite (`unlink`/`rmtree`) could not be undone; a merge cannot be undone exactly; moving a file onto itself with `overwrite=true` deleted it (found while designing NEXT-D, regression test added) |
+| T4 | Content is staged next to its target, verified, then put in place with one rename; a cross-volume move is a verified copy before the source is removed | a crash or a short write must never leave a half-written file or lose the source |
+| T5 | Undo only from the exact state the agent left (fingerprint match); anything else is left alone and reported. What an undo removes goes to the Recycle Bin. A deletion is not undone (`manual`) | an undo that overwrote the user's later edits would be worse than no undo; restoring from the Recycle Bin programmatically is not reliable |
+| T6 | Rollback is started only by the user, for a finished task, and runs each undo as an `fs_undo` call through the router and the permission engine. `fs_undo` is hidden from the planner and refuses to run outside a rollback | "everything that touches the computer goes through the router" holds for undo too; the model must not decide to undo |
+| T7 | Rollback is idempotent and resumable: `undoing` is stored before an undo touches anything, and every undo step checks its own precondition. It does not change the task's status or result | a rollback can be stopped (STOP, crash) half-way; continuing must never repeat a step. A rollback is about the files, not a new verdict on the run (D3/D4 stay intact) |
+
 ## Explicitly deferred (not decided against, not built)
 
 Multi-user and multi-tenancy, distributed or multi-machine workers, load balancing / autoscaling / Kubernetes, scheduled or recurring

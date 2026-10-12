@@ -57,6 +57,13 @@ A resumed task passes the same router, permission engine, goal restrictions, lim
 * a cancel or STOP is stored before it takes effect, so a task the user stopped is never offered for resume;
 * prompt-injection taint is rebuilt from the recorded tool results before the first action.
 
+## Undoing file changes
+
+Every change the filesystem tools make is journalled before it happens, and what an overwrite replaces is kept in
+`<data_dir>/journal/` ([file-transactions](docs/file-transactions.md)). A rollback runs only when you ask for it, only for a finished
+task, and each undo is an ordinary tool call through the router and the permission engine; the planner and the model cannot undo
+anything. An undo touches an item only if it is still exactly as the agent left it, and what it removes goes to the Recycle Bin.
+
 ## Known limitations (please read)
 
 These are real gaps, listed so you can decide whether the residual risk is acceptable:
@@ -110,6 +117,9 @@ These are real gaps, listed so you can decide whether the residual risk is accep
 19. **The emergency stop is not persisted.** A restart releases it. Nothing runs by itself after a restart (interrupted tasks wait for
     you), so this does not start work, but new tasks can be submitted again.
 20. **The interactive API docs (`/api/docs`) are served without the token.** They describe the API; every operation still needs it.
+21. **Journal backups are copies of your files.** What an overwrite replaced stays under `<data_dir>/journal/` (your profile, never sent
+    anywhere) until the change is undone; it is not pruned automatically. A deletion is not undone by a rollback (restore it from the
+    Recycle Bin), and files written by terminal commands, downloads or desktop applications are not journalled.
 
 ## Hardening checklist for a real deployment
 

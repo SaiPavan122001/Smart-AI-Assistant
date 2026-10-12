@@ -27,6 +27,7 @@ from app.security.paths import PathPolicy
 from app.state.events import EventBus
 from app.state.memory import InMemoryRepository
 from app.tools.context import ExecutionContext, ToolServices
+from app.tools.filesystem.journal import FileJournal
 from app.tools.router import ToolRouter
 from app.utils.control import CancelToken, KillSwitch, PauseGate
 
@@ -94,6 +95,7 @@ def make_env(
         d.mkdir(parents=True, exist_ok=True)
     settings = Settings(
         env="test",
+        data_dir=root / "data",
         filesystem=FilesystemSettings(
             allowed_roots=[desktop, downloads, documents], workspace=workspace
         ),
@@ -118,7 +120,10 @@ def make_env(
         include_vision=include_vision,
     )
     router = ToolRouter(registry, engine, approvals, repo, block_on_injection=block_on_injection)
-    services = ToolServices(settings=settings, path_policy=paths, metrics=metrics)
+    services = ToolServices(
+        settings=settings, path_policy=paths, metrics=metrics,
+        journal=FileJournal(repo, settings.data_dir / "journal"),
+    )  # fmt: skip
     return Env(
         root=root, desktop=desktop, downloads=downloads, documents=documents, workspace=workspace,
         settings=settings, paths=paths, repo=repo, bus=EventBus(repo), engine=engine, approvals=approvals,

@@ -149,6 +149,14 @@ uncertain) using each tool's read-only `reconcile`; the router replays what alre
 approval for what is uncertain. Startup only classifies (`INTERRUPTED`); the user resumes, restarts or cancels. Details and limits:
 [docs/restart-recovery.md](docs/restart-recovery.md).
 
+### File transactions (NEXT-D)
+
+Every change a filesystem tool makes is written to the file journal before it happens and settled from the observed files after it
+(`tools/filesystem/journal.py`). Content is staged and verified before it replaces anything; what an overwrite replaces is preserved
+first. A rollback, started only by the user for a finished task, walks the journal newest first and runs each undo as an `fs_undo`
+call through the router, undoing only what is still exactly as the agent left it. Details and limits:
+[docs/file-transactions.md](docs/file-transactions.md).
+
 ### Loop safety
 
 Per-task action ledger (`tools/loop_guard.py`): an identical state-establishing action that already succeeded is replayed, not

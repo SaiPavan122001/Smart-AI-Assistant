@@ -64,7 +64,7 @@ def build_env(
     for d in dirs.values():
         d.mkdir(parents=True, exist_ok=True)
     settings = Settings(
-        env="test", log_json=False, log_level="WARNING",
+        env="test", log_json=False, log_level="WARNING", data_dir=root / "data",
         filesystem=FilesystemSettings(allowed_roots=[dirs["Desktop"], dirs["Downloads"], dirs["Documents"]], workspace=dirs["workspace"]),
         browser=BrowserSettings(allow_private_network=True, headless=True),
         limits=limits or LimitSettings(approval_timeout_s=20, max_execution_seconds=120),

@@ -22,6 +22,7 @@ from app.models.task import Task, TaskResult
 from app.observability.logging import get_logger
 from app.observability.usage import UsageMeter
 from app.orchestration.recovery import assess_interruption
+from app.orchestration.rollback import JournalView, RollbackResult, journal_view, run_rollback
 from app.orchestration.runner import RunnerDeps, TaskRunner
 from app.state.machine import transition
 from app.state.repository import AgentActionRecord
@@ -54,6 +55,7 @@ class TaskRuntime:
         # answered with the interrupted task, never run a second time next to it.
         self._interrupted_by_text: dict[str, str] = {}
         self._resuming: set[str] = set()
+        self._rolling_back: set[str] = set()
 
     # ------------------------------------------------------------------ submit
     async def submit(
@@ -470,6 +472,49 @@ class TaskRuntime:
         return await self.submit(
             old.instruction, session_id=old.session_id, user_id=old.user_id, restarted_from=old.id
         )
+
+    # ------------------------------------------------------------------ rollback (NEXT-D)
+    async def _rollback_blocker(self, task: Task) -> str:
+        if not task.status.is_terminal:
+            return f"the task is {task.status.value}; only a finished task can be rolled back"
+        if self._closing:
+            return "the service is shutting down"
+        if self.kill_switch.engaged:
+            return "the emergency stop is engaged"
+        if any(not t.done() for t in self._tasks.values()):
+            return "a task is running; roll back when it has finished"
+        if self._rolling_back:
+            return "a rollback is already running"
+        if self.deps.services.journal is None:
+            return "the file journal is not configured"
+        return ""
+
+    async def journal(self, task_id: str) -> JournalView:
+        """The task's file changes and whether they can be rolled back now. Read-only."""
+        task = await self.deps.repo.get_task(task_id)
+        if task is None:
+            raise NotFoundError(f"Task {task_id} not found")
+        return journal_view(
+            task_id, await self.deps.repo.list_journal(task_id), await self._rollback_blocker(task)
+        )
+
+    async def rollback(self, task_id: str) -> RollbackResult:
+        """Undo a finished task's file changes, newest first, at the user's request. Never automatic.
+
+        Every undo is an ``fs_undo`` call through the router; an item that is no longer exactly as the
+        agent left it is left alone. Running it again continues with whatever is still open."""
+        task = await self.deps.repo.get_task(task_id)
+        if task is None:
+            raise NotFoundError(f"Task {task_id} not found")
+        blocked = await self._rollback_blocker(task)
+        if blocked:
+            raise AgentError(f"Cannot roll back: {blocked}", code=ErrorCode.INVALID_INPUT)
+        self._rolling_back.add(task_id)  # before the first await: a concurrent request is refused
+        try:
+            async with self._sem:  # one actor on the computer at a time (D1)
+                return await run_rollback(self.deps, self.kill_switch, task_id, task.status)
+        finally:
+            self._rolling_back.discard(task_id)
 
     async def shutdown(self) -> None:
         self._closing = True

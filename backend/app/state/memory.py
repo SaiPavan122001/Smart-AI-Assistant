@@ -12,6 +12,7 @@ from typing import Any
 from app.models.approval import ApprovalRequest
 from app.models.enums import ApprovalStatus, TaskStatus
 from app.models.events import ExecutionEvent
+from app.models.journal import JournalEntry
 from app.models.observation import Observation
 from app.models.task import Task
 from app.models.verification import VerificationResult
@@ -36,6 +37,7 @@ class InMemoryRepository:
         self._actions: dict[str, list[AgentActionRecord]] = defaultdict(list)
         self._logs: dict[str, list[LogEntry]] = defaultdict(list)
         self._decisions: dict[str, list[PermissionDecisionRecord]] = defaultdict(list)
+        self._journal: dict[str, dict[str, JournalEntry]] = defaultdict(dict)
         self._policy: dict[str, Any] | None = None
         self._sessions: dict[str, dict[str, Any]] = {}
 
@@ -100,6 +102,13 @@ class InMemoryRepository:
 
     async def list_verifications(self, task_id: str) -> list[VerificationResult]:
         return list(self._verifications[task_id])
+
+    async def save_journal_entry(self, entry: JournalEntry) -> None:
+        self._journal[entry.task_id][entry.id] = entry.model_copy(deep=True)
+
+    async def list_journal(self, task_id: str) -> list[JournalEntry]:
+        items = sorted(self._journal[task_id].values(), key=lambda e: (e.seq, e.created_at))
+        return [e.model_copy(deep=True) for e in items]
 
     async def save_agent_action(self, record: AgentActionRecord) -> None:
         self._actions[record.task_id].append(record)

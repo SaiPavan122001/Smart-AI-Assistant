@@ -139,6 +139,9 @@ docker compose -f infra/docker/docker-compose.yml up -d --wait
 * A task interrupted by a restart waits as `INTERRUPTED` until you resume, restart or cancel it. Completed steps are not repeated; an
   action whose outcome is unknown needs your approval. Browser pages are reopened. No exactly-once guarantee for side effects
   ([details](docs/restart-recovery.md)).
+* File changes are journalled; a finished task's changes can be rolled back on request (`POST /api/v1/tasks/{id}/rollback`), only where
+  the files are still as the agent left them. Deletions stay in the Recycle Bin; terminal, download and desktop writes are not
+  journalled ([details](docs/file-transactions.md)).
 
 Full list: [PROJECT_STATUS.md](PROJECT_STATUS.md) and [SECURITY.md](SECURITY.md).
 

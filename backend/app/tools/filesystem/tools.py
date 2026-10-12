@@ -6,7 +6,6 @@ from __future__ import annotations
 import fnmatch
 import hashlib
 import os
-import shutil
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -14,12 +13,22 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from app.models.enums import Capability, RiskLevel
+from app.models.journal import JournalOp
 from app.models.tool import RetryPolicy, RiskAssessment
 from app.security.paths import PathPolicy, ResolvedPath, is_redirect, walk_confined
 from app.tools.base import Reconciliation, Tool, ToolOutput
 from app.tools.context import ExecutionContext, ToolServices
+from app.tools.filesystem.journal import (
+    FileJournal,
+    content_fingerprint,
+    copy_verified,
+    describe,
+    fingerprint,
+    move_verified,
+    write_staged,
+)
 from app.tools.schema import OutputModel
-from app.utils.errors import AgentError, ErrorCode, PathViolation
+from app.utils.errors import AgentError, ErrorCode, PathViolation, PolicyViolation
 
 _TEXT_EXT = {
     ".txt", ".md", ".py", ".json", ".yaml", ".yml", ".toml", ".ini", ".cfg", ".csv", ".log", ".xml",
@@ -57,6 +66,16 @@ def _dir_stats(p: Path, cap: int = 5000) -> tuple[int, int]:
 
 def _resolve(ctx: ExecutionContext, raw: str, **kw: Any) -> ResolvedPath:
     return ctx.paths.resolve(raw, cwd=ctx.cwd, **kw)
+
+
+def journal_of(ctx: ExecutionContext) -> FileJournal:
+    """A file change is only made when it can be journalled first (NEXT-D)."""
+    if ctx.services.journal is None:
+        raise AgentError(
+            "File changes are unavailable: the file journal is not configured. Nothing was changed.",
+            code=ErrorCode.NOT_AVAILABLE,
+        )
+    return ctx.services.journal
 
 
 # ----------------------------------------------------------------------------- output contracts
@@ -420,11 +439,12 @@ class FsCreate(Tool[FsCreateInput]):
     async def run(self, args: FsCreateInput, ctx: ExecutionContext) -> ToolOutput:
         rp = _resolve(ctx, args.path, write=args.kind == "file", allow_root_itself=False)
         p = rp.path
+        journal = journal_of(ctx)
         if args.kind == "dir":
             if p.exists() and not p.is_dir():
                 raise AgentError(f"A file already exists at {p}", code=ErrorCode.ALREADY_EXISTS)
             existed = p.is_dir()
-            p.mkdir(parents=True, exist_ok=True)
+            await journal.make_dirs(ctx, p)
             return ToolOutput(
                 data={"path": str(p), "created": not existed, "kind": "dir"},
                 summary=f"{'Folder already existed' if existed else 'Created folder'}: {p}",
@@ -437,14 +457,25 @@ class FsCreate(Tool[FsCreateInput]):
             )
         if p.is_dir():
             raise AgentError(f"A folder exists at {p}", code=ErrorCode.ALREADY_EXISTS)
-        p.parent.mkdir(parents=True, exist_ok=True)
+        await journal.make_dirs(ctx, p.parent)
         data = args.content.encode("utf-8")
-        tmp = p.with_name(p.name + ".saa-tmp")
-        tmp.write_bytes(data)
-        os.replace(tmp, p)
+        replacing = p.exists()
+        op = JournalOp.REPLACE_FILE if replacing else JournalOp.CREATE_FILE
+        async with journal.change(
+            ctx, op, p, fingerprint_after=content_fingerprint(data), preserve=replacing
+        ) as entry:
+            if (
+                entry.backup is not None
+            ):  # the previous content is kept until the new one is in place
+                Path(entry.backup).parent.mkdir(parents=True, exist_ok=True)
+                copy_verified(p, Path(entry.backup))
+            write_staged(p, data)
+            if entry.fingerprint is None:
+                entry.fingerprint = fingerprint(p)
         return ToolOutput(
             data={"path": str(p), "bytes": len(data), "kind": "file"},
-            summary=f"Wrote {len(data)} bytes to {p}",
+            summary=f"Wrote {len(data)} bytes to {p}"
+            + (" (the previous version is kept for undo)" if replacing else ""),
             artifacts={"path": str(p), "kind": "file", "bytes": len(data)},
         )
 
@@ -466,6 +497,11 @@ def _plan_transfer(
         target = _resolve(ctx, str(target / src.path.name), write=True).path
     if _same_or_inside(target, src.path) and src.path.is_dir():
         raise AgentError("Cannot move/copy a folder into itself", code=ErrorCode.INVALID_INPUT)
+    if target.exists() and os.path.samefile(src.path, target):
+        # "overwrite" would first clear the destination, which is the source itself.
+        raise AgentError(
+            f"Source and destination are the same item: {src.path}", code=ErrorCode.INVALID_INPUT
+        )
     return src.path, target, target.exists()
 
 
@@ -532,7 +568,10 @@ class FsMove(Tool[FsMoveInput]):
     name = "fs_move"
     Output = FsTransferOutput
     Artifacts = FsTransferOutput
-    description = "Move or rename a file/folder within allowed roots. Fails if the destination exists unless overwrite=true."
+    description = (
+        "Move or rename a file/folder within allowed roots. Fails if the destination exists unless "
+        "overwrite=true (what is replaced is kept, so the change can be undone)."
+    )
     capability = Capability.FILESYSTEM
     Input = FsMoveInput
     risk = RiskLevel.MEDIUM
@@ -556,17 +595,32 @@ class FsMove(Tool[FsMoveInput]):
         src, dst, exists = _plan_transfer(ctx, args.src, args.dst, move=True)
         if exists and not args.overwrite:
             raise AgentError(f"Destination already exists: {dst}", code=ErrorCode.ALREADY_EXISTS)
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        if exists:
-            if dst.is_dir():
-                shutil.rmtree(dst)
-            else:
-                dst.unlink()
-        shutil.move(str(src), str(dst))
+        await _transfer(ctx, src, dst, replace=exists, move=True)
         return ToolOutput(
-            data={"src": str(src), "dst": str(dst)}, summary=f"Moved {src.name} to {dst}",
+            data={"src": str(src), "dst": str(dst)}, summary=f"Moved {src.name} to {dst}"
+            + (" (what it replaced is kept for undo)" if exists else ""),
             artifacts={"src": str(src), "dst": str(dst)},
         )  # fmt: skip
+
+
+async def _transfer(
+    ctx: ExecutionContext, src: Path, dst: Path, *, replace: bool, move: bool
+) -> None:
+    """Journalled, verified move or copy. What ``dst`` held is moved to the journal's backup first,
+    so an overwrite never destroys anything."""
+    journal = journal_of(ctx)
+    await journal.make_dirs(ctx, dst.parent)
+    async with journal.change(
+        ctx, JournalOp.MOVE if move else JournalOp.COPY, dst, src=src,
+        kind="dir" if src.is_dir() else "file", fingerprint_after=fingerprint(src), preserve=replace,
+    ) as entry:  # fmt: skip
+        if entry.backup is not None:
+            Path(entry.backup).parent.mkdir(parents=True, exist_ok=True)
+            move_verified(dst, Path(entry.backup))
+        if move:
+            move_verified(src, dst)
+        else:
+            copy_verified(src, dst)
 
 
 class FsCopyInput(FsMoveInput):
@@ -577,7 +631,10 @@ class FsCopy(Tool[FsCopyInput]):
     name = "fs_copy"
     Output = FsTransferOutput
     Artifacts = FsTransferOutput
-    description = "Copy a file/folder within allowed roots. Fails if the destination exists unless overwrite=true."
+    description = (
+        "Copy a file/folder within allowed roots. Fails if the destination exists unless overwrite=true "
+        "(the existing item is replaced, not merged, and kept so the change can be undone)."
+    )
     capability = Capability.FILESYSTEM
     Input = FsCopyInput
     risk = RiskLevel.MEDIUM
@@ -603,17 +660,10 @@ class FsCopy(Tool[FsCopyInput]):
         src, dst, exists = _plan_transfer(ctx, args.src, args.dst, move=False)
         if exists and not args.overwrite:
             raise AgentError(f"Destination already exists: {dst}", code=ErrorCode.ALREADY_EXISTS)
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        if src.is_dir():
-            # A symlink or junction inside the folder is not copied: its target may be anywhere.
-            shutil.copytree(
-                src, dst, dirs_exist_ok=args.overwrite, symlinks=True,
-                ignore=lambda folder, names: [n for n in names if is_redirect(os.path.join(folder, n))],
-            )  # fmt: skip
-        else:
-            shutil.copy2(src, dst)
+        await _transfer(ctx, src, dst, replace=exists, move=False)
         return ToolOutput(
-            data={"src": str(src), "dst": str(dst)}, summary=f"Copied {src.name} to {dst}",
+            data={"src": str(src), "dst": str(dst)}, summary=f"Copied {src.name} to {dst}"
+            + (" (what it replaced is kept for undo)" if exists else ""),
             artifacts={"src": str(src), "dst": str(dst)},
         )  # fmt: skip
 
@@ -684,16 +734,81 @@ class FsDelete(Tool[FsDeleteInput]):
             )
         from send2trash import send2trash
 
-        try:
-            send2trash(str(p))
-        except Exception as exc:  # no permanent-delete fallback by design
-            raise AgentError(
-                f"Could not move {p.name} to the Recycle Bin ({type(exc).__name__}); nothing was deleted",
-                code=ErrorCode.IO_ERROR,
-            ) from exc
+        journal = journal_of(ctx)
+        async with journal.change(ctx, JournalOp.RECYCLE, p, kind="dir" if p.is_dir() else "file"):
+            try:
+                send2trash(str(p))
+            except Exception as exc:  # no permanent-delete fallback by design
+                raise AgentError(
+                    f"Could not move {p.name} to the Recycle Bin ({type(exc).__name__}); nothing was deleted",
+                    code=ErrorCode.IO_ERROR,
+                ) from exc
         return ToolOutput(
             data={"path": str(p), "recycled": True}, summary=f"Moved {p.name} to the Recycle Bin",
             artifacts={"path": str(p)},
+        )  # fmt: skip
+
+
+# ----------------------------------------------------------------------------- fs_undo
+class FsUndoInput(BaseModel):
+    entry_id: str = Field(max_length=64, description="Id of a file-journal entry of this task")
+
+
+class FsUndoOutput(OutputModel):
+    entry_id: str
+    op: str
+    path: str
+    state: str = Field(
+        description="undone | skipped | manual | ... (see docs/file-transactions.md)"
+    )
+    detail: str
+
+
+class FsUndo(Tool[FsUndoInput]):
+    """Reverses one journalled change. Only a rollback the user started runs it (never a plan or the
+    model); each call still goes through the router and the permission engine."""
+
+    name = "fs_undo"
+    Output = FsUndoOutput
+    description = (
+        "Undo one file change this task made, only if the item is still exactly as the agent left it. "
+        "Used by a rollback the user requested; not available to plans."
+    )
+    capability = Capability.FILESYSTEM
+    Input = FsUndoInput
+    risk = RiskLevel.MEDIUM
+    idempotent = True  # every step of an undo checks its own precondition
+    exposed_to_llm = False
+
+    async def _entry(self, args: FsUndoInput, ctx: ExecutionContext) -> Any:
+        if not ctx.extras.get("rollback"):
+            raise PolicyViolation("fs_undo runs only as part of a rollback the user requested")
+        entry = await journal_of(ctx).get(ctx.task_id, args.entry_id)
+        if entry is None:
+            raise AgentError(
+                f"No journal entry {args.entry_id} in this task", code=ErrorCode.NOT_FOUND
+            )
+        # The paths were allowed when the change was made; they must still be allowed to undo it.
+        for raw in (entry.path, entry.src):
+            if raw:
+                ctx.paths.resolve(raw, cwd=ctx.cwd, write=True, allow_root_itself=False)
+        return entry
+
+    async def assess(self, args: FsUndoInput, ctx: ExecutionContext) -> RiskAssessment:
+        entry = await self._entry(args, ctx)
+        return RiskAssessment(
+            risk=RiskLevel.MEDIUM, action=f"Undo: {describe(entry)}", resource=entry.path,
+            category="file_undo",
+        )  # fmt: skip
+
+    async def run(self, args: FsUndoInput, ctx: ExecutionContext) -> ToolOutput:
+        entry = await journal_of(ctx).undo(await self._entry(args, ctx))
+        return ToolOutput(
+            data={
+                "entry_id": entry.id, "op": entry.op.value, "path": entry.path,
+                "state": entry.state.value, "detail": entry.detail,
+            },
+            summary=f"{entry.op.value} {Path(entry.path).name}: {entry.state.value} ({entry.detail})",
         )  # fmt: skip
 
 
@@ -705,6 +820,7 @@ FILESYSTEM_TOOLS: list[type[Tool[Any]]] = [
     FsMove,
     FsCopy,
     FsDelete,
+    FsUndo,
 ]
 
 _ = (PathPolicy, RetryPolicy)  # re-exported for type checkers

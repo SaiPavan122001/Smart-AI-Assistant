@@ -12,7 +12,6 @@ import asyncio
 import hashlib
 import os
 import re
-import shutil
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
@@ -20,11 +19,13 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.models.enums import Capability, RiskLevel
+from app.models.journal import JournalOp
 from app.models.tool import RiskAssessment
 from app.security.paths import walk_confined
 from app.tools.base import Tool, ToolOutput
 from app.tools.context import ExecutionContext
-from app.tools.filesystem.tools import _TEXT_EXT, _read_pdf, _resolve, _stat_entry
+from app.tools.filesystem.journal import copy_verified, fingerprint, move_verified
+from app.tools.filesystem.tools import _TEXT_EXT, _read_pdf, _resolve, _stat_entry, journal_of
 from app.tools.schema import OutputModel
 from app.utils.errors import AgentError, ErrorCode, PathViolation
 
@@ -510,21 +511,29 @@ class FsOrganize(Tool[FsOrganizeInput]):
         dest, todo, skipped, done, twins = _organize_plan(ctx, args)
         moved: list[dict[str, str]] = []
         failed: list[str] = []
+        journal = journal_of(ctx)
         if todo:
-            dest.mkdir(parents=True, exist_ok=True)
+            await journal.make_dirs(ctx, dest)
+        move = args.action == "move"
         for src, target in todo:
             ctx.token.raise_if_cancelled()
+            if target.exists():  # appeared since planning: never overwrite
+                skipped.append((src, "the destination file appeared while organizing"))
+                continue
             try:
-                if target.exists():  # appeared since planning: never overwrite
-                    skipped.append((src, "the destination file appeared while organizing"))
-                    continue
-                if args.action == "move":
-                    await asyncio.to_thread(shutil.move, str(src), str(target))
-                else:
-                    await asyncio.to_thread(shutil.copy2, src, target)
+                # One journal entry per file: a batch that fails half-way can be rolled back exactly.
+                async with journal.change(
+                    ctx, JournalOp.MOVE if move else JournalOp.COPY, target, src=src,
+                    fingerprint_after=await asyncio.to_thread(fingerprint, src),
+                ):  # fmt: skip
+                    await asyncio.to_thread(move_verified if move else copy_verified, src, target)
                 moved.append({"src": str(src), "dst": str(target)})
             except OSError as exc:
                 failed.append(f"{src.name}: {exc.strerror or type(exc).__name__}")
+            except AgentError as exc:
+                if exc.code is not ErrorCode.VERIFICATION_FAILED:
+                    raise  # e.g. the journal cannot be written: stop before touching another file
+                failed.append(f"{src.name}: {exc.message}")
         if failed:
             raise AgentError(
                 f"{len(failed)} file(s) could not be {args.action}d ({'; '.join(failed[:3])}). "

@@ -14,8 +14,9 @@ first. Live validation of NA1–NA5 is **incomplete** (the LLM key's spending li
 
 **The production-reliability roadmap (NEXT-B … NEXT-H) continues on branch `phase/production-reliability-roadmap`** (from the NEXT-A
 head; not merged, not tagged). NEXT-B (restart-safe execution) is done: read [docs/restart-recovery.md](docs/restart-recovery.md). NEXT-C (security hardening) is
-done: read the limitations in [SECURITY.md](SECURITY.md) and decisions C1–C9. Next is NEXT-D (transactional file operations);
-stages and status are in PHASE_PLAN.md. On this 8 GB machine run the checks one group at a
+done: read the limitations in [SECURITY.md](SECURITY.md) and decisions C1–C9. NEXT-D (transactional file operations) is done: read
+[docs/file-transactions.md](docs/file-transactions.md) and decisions T1–T7. Next is NEXT-E (Windows application automation); stages and
+status are in PHASE_PLAN.md. On this 8 GB machine run the checks one group at a
 time (the list is in the validation record of that document): the all-in-one `scripts\check.ps1` ran out of memory.
 
 **DO NOT redesign or redo the completed current phase.** The decisions it rests on are indexed in [DECISIONS.md](DECISIONS.md);
@@ -81,6 +82,8 @@ python -m validation.tool_probe vscode                                   # read-
   auto-resume, never blindly retry an in-flight side effect, never claim exactly-once execution.
 * A side-effecting tool call is recorded before it runs (write-ahead). If that record cannot be written, the action does not run.
 * Task-scoped approval grants are never restored after a restart; refusals and cancel requests always are.
+* A filesystem tool changes a file only inside `FileJournal.change` (journalled first, staged, verified, settled from the files); an
+  overwrite preserves what it replaces. Undo/rollback only through `fs_undo` via the router, started by the user, never by a plan.
 * Walk directories only with `walk_confined` (`app/security/paths.py`); never `os.walk`/`iterdir` over user folders directly, and
   never treat `os.path.islink` as enough (it is False for a junction). A new tool must be placed in `app/permissions/classes.py`.
 * An approval covers the exact call that was shown; the router re-assesses after the wait. Do not cache or reuse approvals.

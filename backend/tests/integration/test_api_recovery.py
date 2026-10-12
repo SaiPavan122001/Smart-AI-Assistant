@@ -34,6 +34,7 @@ def _settings(root: Path) -> Settings:
         d.mkdir(exist_ok=True)
     return Settings(
         env="test",
+        data_dir=root / "data",
         filesystem=FilesystemSettings(allowed_roots=[desktop, downloads, documents], workspace=ws),
         limits=LimitSettings(approval_timeout_s=30),
         security=SecuritySettings(

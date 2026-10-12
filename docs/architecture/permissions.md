@@ -44,6 +44,7 @@ table is the fixed part. *Observing* permissions are proven read-only by test.
 | `move` | `fs_move`, `fs_organize` | yes | allowed (medium); replacing is high: asks. `fs_organize` never overwrites or deletes |
 | `copy` | `fs_copy` | yes | allowed (medium); replacing is high: asks |
 | `delete` | `fs_delete` | yes | always asks (high); a non-empty folder is critical: asks every time, once only |
+| `undo` | `fs_undo` | yes | only inside a rollback the user started, never from a plan or the model; allowed (medium) and only when the item is still exactly as the agent left it ([file-transactions](../file-transactions.md)) |
 | `execute` | `terminal_execute_safe` | yes | read-only invocations allowed; running code or installing asks (high); shell interpreters and deny-listed commands cannot be approved |
 | `query_environment` | `terminal_query`, `terminal_environment` | no | allowed |
 | `browser_read` | `browser_read`, `browser_find` | no | allowed; output is untrusted data |
